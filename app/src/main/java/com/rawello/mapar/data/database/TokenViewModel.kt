@@ -59,18 +59,18 @@ class TokenViewModel @Inject constructor(private val tokenDao: TokenDao) : ViewM
             // Получаем токен авторизованного пользователя
             val userToken = tokenDao.getAllTokens().find { it.name != "Anonymous" }?.token
             if (userToken != null) {
-                ApiFactory.TOKEN = userToken
                 try {
+                    Log.d("TokenViewModel", "Checking if user is building owner for buildingId: $buildingId")
                     return ApiFactory.apiService.isBuildingOwner(buildingId)
                 } catch (e: Exception) {
-                    Log.e("TokenViewModel", "Error checking building ownership: ${e.message}")
+                    Log.e("TokenViewModel", "Error checking building ownership: ", e)
                     return false
                 }
             }
 
             return false
         } catch (e: Exception) {
-            Log.e("TokenViewModel", "Error in isBuildingOwner: ${e.message}")
+            Log.e("TokenViewModel", "Error in isBuildingOwner: ", e)
             return false
         }
     }
@@ -87,7 +87,6 @@ class TokenViewModel @Inject constructor(private val tokenDao: TokenDao) : ViewM
             }
             // Добавляем новый анонимный токен
             tokenDao.insertToken(Token("Anonymous", anonymousToken.token))
-            ApiFactory.TOKEN = anonymousToken.token
         }
     }
 
@@ -109,7 +108,6 @@ class TokenViewModel @Inject constructor(private val tokenDao: TokenDao) : ViewM
             val anonymousToken = ApiFactory.apiService.getAnonymousToken()
             tokenDao.deleteTokenByName("Anonymous")
             tokenDao.insertToken(Token("Anonymous", anonymousToken.token))
-            ApiFactory.TOKEN = anonymousToken.token
         }
     }
 }

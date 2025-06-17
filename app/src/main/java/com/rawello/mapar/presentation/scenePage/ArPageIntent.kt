@@ -34,6 +34,7 @@ sealed class ArPageIntent {
 
     data class DeleteNode(val nodeId: Int) : ArPageIntent()
     data class LinkNodes(val nodeId1: Int, val nodeId2: Int) : ArPageIntent()
+    data class DeleteEdge(val nodeId1: Int, val nodeId2: Int) : ArPageIntent()
     data object BuildPath : ArPageIntent()
     data class ShowSnackbar(val message: String) : ArPageIntent()
     data class SetReadyToPlace(val readyToPlace: Boolean) : ArPageIntent()
@@ -56,4 +57,5 @@ sealed class ArPageIntent {
     data class ShowQrDialog(val show: Boolean) : ArPageIntent()
     data class SetQrBitmap(val bitmap: android.graphics.Bitmap?) : ArPageIntent()
     data class SetDestinationNodeId(val nodeId: Int?) : ArPageIntent()
+    data class SetShowRouteInfoBar(val show: Boolean) : ArPageIntent()
 }

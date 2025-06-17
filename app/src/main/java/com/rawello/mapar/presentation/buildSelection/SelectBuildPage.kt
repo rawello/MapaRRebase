@@ -1,12 +1,12 @@
 package com.rawello.mapar.presentation.buildSelection
 
-import android.annotation.SuppressLint
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
@@ -16,25 +16,34 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.with
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.rawello.mapar.R
+import com.rawello.mapar.data.TokenManager
+import com.rawello.mapar.data.database.FavoriteViewModel
 import com.rawello.mapar.data.database.NodeViewModel
+import com.rawello.mapar.data.database.BuildingRepository
+import com.rawello.mapar.data.database.NetworkUtils
 import com.rawello.mapar.data.models.Building
 import com.rawello.mapar.data.models.NodeDb
 import com.rawello.mapar.data.network.ApiFactory
@@ -45,6 +54,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class SelectBuildState(
     val buildings: List<Building> = emptyList(),
@@ -69,78 +80,146 @@ sealed class SelectBuildIntent {
 @Composable
 fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildState) {
     var isLoading by remember { mutableStateOf(false) }
+    var showLocalDialog by remember { mutableStateOf(false) }
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var loginErrorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    // Получаем ViewModel и локальные избранные на верхнем уровне!
+    val favoriteViewModel: FavoriteViewModel = viewModel(
+        factory = FavoriteViewModel.Factory(context.applicationContext as android.app.Application)
+    )
+    val localFavorites by favoriteViewModel.favorites.collectAsState()
 
     LaunchedEffect(Unit) {
         isLoading = true
-        try {
-            val buildings = ApiFactory.apiService.getAllBuildings()
+        val hasNetwork = NetworkUtils.isNetworkAvailable(context)
+        if (hasNetwork) {
             try {
-                val favorites = ApiFactory.apiService.getFavorites()
-                onIntent(SelectBuildIntent.UpdateFavorites(favorites))
+                withTimeout(2500) {
+                    val buildings = try {
+                        ApiFactory.apiService.getAllBuildings()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    try {
+                        val favorites = withTimeoutOrNull(1500) {
+                            try {
+                                ApiFactory.apiService.getFavorites()
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        if (favorites != null) {
+                            onIntent(SelectBuildIntent.UpdateFavorites(favorites))
+                        } else if (localFavorites.isNotEmpty()) {
+                            onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                        }
+                    } catch(_:Exception) {
+                        if (localFavorites.isNotEmpty()) {
+                            onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                        }
+                    }
+                    if (buildings.isNotEmpty()) {
+                        onIntent(SelectBuildIntent.UpdateBuildings(buildings.map { Building(it.id, it.name, it.address) }))
+                        val repo = BuildingRepository(context)
+                        buildings.forEach { repo.insertBuilding(Building(it.id, it.name, it.address)) }
+                    } else {
+                        val repo = BuildingRepository(context)
+                        val localBuildings = repo.getAllBuildings()
+                        if (localBuildings.isNotEmpty()) {
+                            if (!NetworkUtils.isNetworkAvailable(context)) {
+                                showLocalDialog = true
+                            }
+                            onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
+                            if (localFavorites.isNotEmpty()) {
+                                onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                            }
+                        } else {
+                            onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                val repo = BuildingRepository(context)
+                val localBuildings = repo.getAllBuildings()
+                if (localBuildings.isNotEmpty()) {
+                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                        showLocalDialog = true
+                    }
+                    onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
+                    if (localFavorites.isNotEmpty()) {
+                        onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                    }
+                } else {
+                    onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
+                }
+            } finally {
+                isLoading = false
             }
-            catch(_:Exception){
-
+        } else {
+            val repo = BuildingRepository(context)
+            val localBuildings = repo.getAllBuildings()
+            if (localBuildings.isNotEmpty()) {
+                showLocalDialog = true
+                onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
+                if (localFavorites.isNotEmpty()) {
+                    onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                }
+            } else {
+                onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
             }
-            onIntent(SelectBuildIntent.UpdateBuildings(buildings.map { Building(it.id, it.name, it.address) }))
-        } catch (e: Exception) {
-            onIntent(SelectBuildIntent.UpdateErrorMessage("Error: ${e.message}"))
-        } finally {
             isLoading = false
         }
     }
 
-    Surface {
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
+    if (showLocalDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocalDialog = false },
+            title = { Text("Нет интернета") },
+            text = { Text("Данные загружены из памяти. Некоторые функции могут быть недоступны.") },
+            confirmButton = {
+                Button(onClick = { showLocalDialog = false }) { Text("Ок") }
             }
-        } else if (state.buildings.isEmpty() && state.errorMessage != null) {
-            Log.d("error", state.errorMessage)
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Проверьте подключение к интернету",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding() // Добавляем отступ от строки состояния
-                    .navigationBarsPadding(), // Добавляем отступ от нижней навигации
-                verticalArrangement = Arrangement.Top, // Меняем выравнивание на Top
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = state.searchQuery,
-                        onValueChange = { query -> onIntent(SelectBuildIntent.UpdateSearchQuery(query)) },
-                        label = { Text("Поиск здания") },
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = {
-                            //todo
-                        })
-                    )
-                    IconButton(
-                        onClick = { onIntent(SelectBuildIntent.NavigateQr) },
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Icon(Icons.Default.Favorite, contentDescription = "Сканировать QR")
-                    }
-                }
+        )
+    }
 
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        var showSearch by remember { mutableStateOf(false) }
+        var showAccountDialog by remember { mutableStateOf(false) }
+        var showLogoutDialog by remember { mutableStateOf(false) }
+        var searchQuery by remember { mutableStateOf(state.searchQuery) }
+        val searchBarHeight = 64.dp
+        val searchBarOffset by animateDpAsState(targetValue = if (showSearch) 56.dp else -searchBarHeight - 24.dp)
+        val contentTopPadding by animateDpAsState(targetValue = if (showSearch) 104.dp else 32.dp)
+
+        // --- Основной контент (список зданий и т.д.) ---
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = contentTopPadding, bottom = 32.dp) // Динамический отступ сверху
+        ) {
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (state.buildings.isEmpty() && state.errorMessage != null) {
+                Log.d("error", state.errorMessage)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Проверьте подключение к интернету",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            } else {
                 AnimatedVisibility(
                     visible = state.favorites.isNotEmpty(),
                     enter = fadeIn() + expandVertically(),
@@ -164,7 +243,9 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                     modifier = Modifier.padding(start = 16.dp, top = 16.dp)
                 )
                 LazyColumn(
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = 32.dp) // Дополнительный отступ для плавающего BottomBar
                 ) {
                     val filteredBuildings = state.buildings.filter { it.name.contains(state.searchQuery, ignoreCase = true) }
                     items(filteredBuildings) { building ->
@@ -176,6 +257,223 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                     }
                 }
             }
+        }
+
+        // --- Анимированная выезжающая строка поиска сверху ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(searchBarHeight)
+                .offset(y = searchBarOffset)
+                .padding(horizontal = 16.dp)
+                .zIndex(2f)
+        ) {
+            if (showSearch) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                        onIntent(SelectBuildIntent.UpdateSearchQuery(it))
+                    },
+                    label = { Text("Поиск здания") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = searchBarHeight),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            showSearch = false
+                            searchQuery = ""
+                            onIntent(SelectBuildIntent.UpdateSearchQuery(""))
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Закрыть поиск")
+                        }
+                    }
+                )
+            }
+        }
+
+        // --- Плавающий BottomBar ---
+        Box(
+            modifier = Modifier
+                .fillMaxSize(),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Card(
+                modifier = Modifier
+                    .widthIn(min = 260.dp, max = 400.dp)
+                    .height(64.dp)
+                    .offset(y = (-32).dp), // Приподнимаем на 32dp над низом
+                shape = RoundedCornerShape(32.dp),
+                elevation = CardDefaults.cardElevation(8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    IconButton(onClick = { showAccountDialog = true }) {
+                        Icon(painter = painterResource(id= R.drawable.account), contentDescription = "Аккаунт", modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = { showSearch = !showSearch }) {
+                        Icon(Icons.Default.Search, contentDescription = "Поиск")
+                    }
+                    IconButton(onClick = { onIntent(SelectBuildIntent.NavigateQr) }) {
+                        Icon(painter = painterResource(id= R.drawable.qrcode), contentDescription = "QR", modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
+
+        // --- Диалог аккаунта ---
+        if (showAccountDialog) {
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            var currentUser by remember { mutableStateOf<String?>(null) }
+            val scope = rememberCoroutineScope()
+            var showNewBuildingDialog by remember { mutableStateOf(false) }
+            var newBuildingName by remember { mutableStateOf("") }
+            LaunchedEffect(showAccountDialog) {
+                currentUser = tokenManager.getCurrentUsername()
+            }
+            if (currentUser != null) {
+                AlertDialog(
+                    onDismissRequest = { showAccountDialog = false },
+                    title = { Text("Аккаунт") },
+                    text = {
+                        Column {
+                            Text("Вы вошли как $currentUser")
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { showNewBuildingDialog = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Добавить здание")
+                                Spacer(Modifier.width(8.dp))
+                                Text("Создать свое здание")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            scope.launch {
+                                tokenManager.logout()
+                                showLogoutDialog = false
+                                showAccountDialog = false
+                                currentUser = null
+                            }
+                        }) { Text("Выйти") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAccountDialog = false }) { Text("Назад") }
+                    }
+                )
+                if (showNewBuildingDialog) {
+                    var newBuildingAddress by remember { mutableStateOf("") }
+                    AlertDialog(
+                        onDismissRequest = { showNewBuildingDialog = false },
+                        title = { Text("Введите данные нового здания") },
+                        text = {
+                            Column {
+                                TextField(
+                                    value = newBuildingName,
+                                    onValueChange = { newBuildingName = it },
+                                    label = { Text("Название здания") }
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                TextField(
+                                    value = newBuildingAddress,
+                                    onValueChange = { newBuildingAddress = it },
+                                    label = { Text("Адрес здания") }
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    // TODO: отправить запрос на создание здания на сервер
+                                    Log.d("SelectBuildPage", "Создание здания: $newBuildingName, адрес: $newBuildingAddress")
+                                    showNewBuildingDialog = false
+                                }
+                            ) { Text("Создать") }
+                        },
+                        dismissButton = {
+                            Button(onClick = { showNewBuildingDialog = false }) { Text("Отмена") }
+                        }
+                    )
+                }
+            } else {
+                AnimatedVisibility(
+                    visible = currentUser == null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    com.rawello.mapar.presentation.login.LoginPage(
+                        onDismiss = { showAccountDialog = false },
+                        onLogin = { username, password ->
+                            val trimmedUsername = username.trim()
+                            val trimmedPassword = password.trim()
+                            Log.d("LoginDialog", "Попытка входа: $trimmedUsername")
+                            scope.launch {
+                                try {
+                                    val response = ApiFactory.apiService.login(com.rawello.mapar.data.models.LoginRequest(trimmedUsername, trimmedPassword))
+                                    Log.d("LoginDialog", "Успешный вход: $trimmedUsername, token: ${response.token}")
+                                    TokenManager.getInstance(context).login(trimmedUsername, response.token)
+                                    currentUser = trimmedUsername
+                                    showAccountDialog = false // Автоматически закрываем окно при успехе
+                                    loginErrorMessage = null
+                                } catch (e: Exception) {
+                                    Log.e("LoginDialog", "Ошибка входа: $trimmedUsername, ${e.message}", e)
+                                    val isForbidden = e.message?.contains("403") == true
+                                    loginErrorMessage = if (isForbidden) "Неверный логин или пароль" else (e.message ?: "Неизвестная ошибка")
+                                }
+                            }
+                        },
+                        onRegister = { username, password ->
+                            val trimmedUsername = username.trim()
+                            val trimmedPassword = password.trim()
+                            Log.d("LoginDialog", "Попытка регистрации: $trimmedUsername")
+                            scope.launch {
+                                try {
+                                    ApiFactory.apiService.register(com.rawello.mapar.data.models.SignUpRequest(trimmedUsername, trimmedPassword))
+                                    Log.d("LoginDialog", "Успешная регистрация: $trimmedUsername")
+                                    val response = ApiFactory.apiService.login(com.rawello.mapar.data.models.LoginRequest(trimmedUsername, trimmedPassword))
+                                    TokenManager.getInstance(context).login(trimmedUsername, response.token)
+                                    currentUser = trimmedUsername
+                                    showAccountDialog = false // Автоматически закрываем окно при успехе
+                                    loginErrorMessage = null
+                                } catch (e: Exception) {
+                                    Log.e("LoginDialog", "Ошибка регистрации: $trimmedUsername, ${e.message}", e)
+                                    val isForbidden = e.message?.contains("403") == true
+                                    loginErrorMessage = if (isForbidden) "Неверный логин или пароль" else (e.message ?: "Неизвестная ошибка")
+                                }
+                            }
+                        },
+                        snackbarHostState = remember { SnackbarHostState() },
+                        scope = scope,
+                        context = context,
+                        errorMessage = loginErrorMessage
+                    )
+                }
+            }
+        }
+
+        // --- Диалог выхода ---
+        if (showLogoutDialog) {
+            val scope = rememberCoroutineScope()
+            AlertDialog(
+                onDismissRequest = { showLogoutDialog = false },
+                title = { Text("Выйти из аккаунта?") },
+                confirmButton = {
+                    Button(onClick = {
+                        scope.launch {
+                            TokenManager.getInstance(context).logout()
+                            showLogoutDialog = false
+                            showAccountDialog = false
+                        }
+                    }) { Text("Выйти") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogoutDialog = false }) { Text("Отмена") }
+                }
+            )
         }
     }
 }
@@ -308,6 +606,17 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
     val isLoading: MutableState<Boolean> = remember { mutableStateOf(false) }
     val showSelectBuildPage: MutableState<Boolean> = remember { mutableStateOf(true) }
 
+    // --- FavoriteViewModel для локального избранного ---
+    val context = LocalContext.current.applicationContext
+    val favoriteViewModel: FavoriteViewModel = viewModel(
+        factory = FavoriteViewModel.Factory(context as android.app.Application)
+    )
+    val localFavorites by favoriteViewModel.favorites.collectAsState()
+
+    // --- UI для входа/регистрации ---
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var authMessage by remember { mutableStateOf<String?>(null) }
+
     fun onIntent(intent: SelectBuildIntent) {
         when (intent) {
             is SelectBuildIntent.NavigateToNext -> {
@@ -336,8 +645,15 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
                 val favorites = state.favorites.toMutableList()
                 if (favorites.contains(intent.buildingId)) {
                     favorites.remove(intent.buildingId)
+                    // Удаляем из локального избранного
+                    favoriteViewModel.removeFavorite(intent.buildingId.toInt())
                 } else {
                     favorites.add(intent.buildingId)
+                    // Добавляем в локальное избранное
+                    val building = state.buildings.find { it.id.toLong() == intent.buildingId }
+                    if (building != null) {
+                        favoriteViewModel.addFavorite(building.id, building.name)
+                    }
                 }
                 state = state.copy(favorites = favorites)
                 updateFavorites(favorites)
@@ -363,9 +679,69 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
                 CircularProgressIndicator()
             }
         } else if (showSelectBuildPage.value) {
-            SelectBuildPage(onIntent = { intent ->
-                onIntent(intent)
-            }, state = state)
+            Column {
+                SelectBuildPage(onIntent = { intent ->
+                    onIntent(intent)
+                }, state = state.copy(
+                    favorites = if (/* пользователь не вошёл */ false) localFavorites.map { it.nodeId.toLong() } else state.favorites
+                ))
+            }
+        }
+    }
+
+    if (showAuthDialog) {
+        val scope = rememberCoroutineScope()
+        com.rawello.mapar.presentation.login.LoginPage(
+            onDismiss = { showAuthDialog = false },
+            onLogin = { username, password ->
+                val trimmedUsername = username.trim()
+                val trimmedPassword = password.trim()
+                Log.d("LoginDialog", "Попытка входа: $trimmedUsername")
+                scope.launch {
+                    try {
+                        val response = ApiFactory.apiService.login(com.rawello.mapar.data.models.LoginRequest(trimmedUsername, trimmedPassword))
+                        Log.d("LoginDialog", "Успешный вход: $trimmedUsername, token: ${response.token}")
+                        TokenManager.getInstance(context).login(trimmedUsername, response.token)
+                        authMessage = "Вход выполнен успешно"
+                        showAuthDialog = false
+                    } catch (e: Exception) {
+                        Log.e("LoginDialog", "Ошибка входа: $trimmedUsername, ${e.message}", e)
+                        // Проверяем на 403
+                        val isForbidden = e.message?.contains("403") == true
+                        authMessage = if (isForbidden) "Неверный логин или пароль" else (e.message ?: "Неизвестная ошибка")
+                    }
+                }
+            },
+            onRegister = { username, password ->
+                val trimmedUsername = username.trim()
+                val trimmedPassword = password.trim()
+                Log.d("LoginDialog", "Попытка регистрации: $trimmedUsername")
+                scope.launch {
+                    try {
+                        ApiFactory.apiService.register(com.rawello.mapar.data.models.SignUpRequest(trimmedUsername, trimmedPassword))
+                        Log.d("LoginDialog", "Успешная регистрация: $trimmedUsername")
+                        val response = ApiFactory.apiService.login(com.rawello.mapar.data.models.LoginRequest(trimmedUsername, trimmedPassword))
+                        TokenManager.getInstance(context).login(trimmedUsername, response.token)
+                        authMessage = "Регистрация успешна. Теперь войдите."
+                        showAuthDialog = false
+                    } catch (e: Exception) {
+                        Log.e("LoginDialog", "Ошибка регистрации: $trimmedUsername, ${e.message}", e)
+                        val isForbidden = e.message?.contains("403") == true
+                        authMessage = if (isForbidden) "Неверный логин или пароль" else (e.message ?: "Неизвестная ошибка")
+                    }
+                }
+            },
+            snackbarHostState = snackbarHostState,
+            scope = scope,
+            context = context
+        )
+    }
+
+    // Показываем Snackbar для сообщений об аутентификации
+    LaunchedEffect(authMessage) {
+        authMessage?.let {
+            snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short)
+            authMessage = null
         }
     }
 

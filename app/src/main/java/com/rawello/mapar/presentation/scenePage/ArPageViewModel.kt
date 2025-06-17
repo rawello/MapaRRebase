@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     private val _state = MutableStateFlow(ArPageState())
@@ -44,6 +46,19 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     private val drawer = NodeDrawers()
     private val helper = PathHelper()
     private val nodeActions = NodeActions()
+    private var routeInfoHideJob: Job? = null
+
+    // --- EditMode: отслеживание несохранённых изменений ---
+    var hasUnsavedChanges = false
+        private set
+
+    private fun markUnsaved() {
+        if (state.value.isEditMode) hasUnsavedChanges = true
+    }
+
+    fun resetUnsavedFlag() {
+        hasUnsavedChanges = false
+    }
 
     init {
         viewModelScope.launch {
@@ -69,6 +84,10 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                     linkNodes(intent.nodeId1, intent.nodeId2)
                     redrawLinks()
                 }
+                is ArPageIntent.DeleteEdge -> {
+                    deleteEdge(intent.nodeId1, intent.nodeId2)
+                    redrawLinks()
+                }
                 is ArPageIntent.BuildPath -> buildPath()
                 is ArPageIntent.ShowSnackbar -> showSnackbar(intent.message)
                 is ArPageIntent.SetReadyToPlace -> setReadyToPlace(intent.readyToPlace)
@@ -90,6 +109,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                 is ArPageIntent.SetUserLocation -> setUserLocation(intent.nodeId, intent.navController)
                 is ArPageIntent.ShowQrDialog -> showQrDialog(intent.show)
                 is ArPageIntent.SetQrBitmap -> setQrBitmap(intent.bitmap)
+                is ArPageIntent.SetShowRouteInfoBar -> setShowRouteInfoBar(intent.show)
                 else -> {} // Handle other intents
             }
         }
@@ -127,6 +147,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
         )
         nodeViewModel.insertNode(newNode)
         _state.value = _state.value.copy(nodeList = nodeViewModel.getAllNodes().first())
+        markUnsaved()
     }
 
     private suspend fun deleteNode(nodeId: Int) {
@@ -134,6 +155,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
         if (nodeToDelete != null) {
             nodeActions.deleteNode(state.value.nodeList, nodeToDelete, nodeViewModel)
             _state.value = _state.value.copy(nodeList = nodeViewModel.getAllNodes().first())
+            markUnsaved()
         }
     }
 
@@ -144,18 +166,49 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
             nodeViewModel.updateNode(node1.copy(neighbors = node1.neighbors + "," + node2.id))
             nodeViewModel.updateNode(node2.copy(neighbors = node2.neighbors + "," + node1.id))
             _state.value = _state.value.copy(nodeList = nodeViewModel.getAllNodes().first())
+            markUnsaved()
+        }
+    }
+
+    private suspend fun deleteEdge(nodeId1: Int, nodeId2: Int) {
+        val node1 = _state.value.nodeList.find { it.id == nodeId1 }
+        val node2 = _state.value.nodeList.find { it.id == nodeId2 }
+        if (node1 != null && node2 != null) {
+            val newNeighbors1 = node1.neighbors.split(",").filter { it.toIntOrNull() != nodeId2 }.joinToString(",")
+            val newNeighbors2 = node2.neighbors.split(",").filter { it.toIntOrNull() != nodeId1 }.joinToString(",")
+            nodeViewModel.updateNode(node1.copy(neighbors = newNeighbors1))
+            nodeViewModel.updateNode(node2.copy(neighbors = newNeighbors2))
+            _state.value = _state.value.copy(nodeList = nodeViewModel.getAllNodes().first())
+            markUnsaved()
         }
     }
 
     private fun buildPath() {
         helper.clearOldArrows(_state.value.childNodes)
 
-        if (_state.value.selectedPoint1 != null && _state.value.selectedPoint2 != null && !_state.value.selectedPoint1.equals(_state.value.selectedPoint2)) {
-            val startNode = _state.value.nodeGraph.getGraph().keys.find { it.id == _state.value.selectedPoint1!! }
-            val endNode = _state.value.nodeGraph.getGraph().keys.find { it.id == _state.value.selectedPoint2!! }
+        // Логирование для диагностики
+        Log.d("buildPath_debug", "selectedPoint1: ${_state.value.selectedPoint1}, selectedPoint2: ${_state.value.selectedPoint2}")
+        val graphKeys = _state.value.nodeGraph.getGraph().keys.map { it.id }
+        Log.d("buildPath_debug", "graph keys: $graphKeys")
+
+        // Новый поиск по title, если selectedPoint1/2 не являются id
+        val nodeList = _state.value.nodeList
+        val startNodeId = nodeList.find { it.title == _state.value.selectedPoint2 }?.id?.toString() ?: _state.value.selectedPoint2
+        val endNodeId = nodeList.find { it.title == _state.value.selectedPoint1 }?.id?.toString() ?: _state.value.selectedPoint1
+
+        Log.d("buildPath_debug", "resolved startNodeId: $startNodeId, endNodeId: $endNodeId")
+
+        if (startNodeId != null && endNodeId != null && startNodeId != endNodeId) {
+            val startNode = _state.value.nodeGraph.getGraph().keys.find { it.id == startNodeId }
+            val endNode = _state.value.nodeGraph.getGraph().keys.find { it.id == endNodeId }
+
+            Log.d("buildPath_debug", "startNode: $startNode, endNode: $endNode")
 
             if (startNode != null && endNode != null) {
-                val path = Dijkstra().dijkstra(_state.value.nodeGraph.getGraph(), startNode, endNode)
+                val path = Dijkstra().dijkstra(_state.value.nodeGraph.getGraph(), endNode, startNode)
+
+                // Ставим флаг, что маршрут был активен
+                _state.value = _state.value.copy(wasRouteActive = path.isNotEmpty())
 
                 if (path.size >= 2) {
                     Log.d("size", state.value.childNodes.size.toString())
@@ -260,37 +313,20 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     }
 
     private fun redrawLinks() {
-        viewModelScope.launch {
-            val currentNodeList = _state.value.nodeList
-            val currentLinks = _state.value.childNodes.filter { it.name!!.contains("_") }
-
-            currentLinks.forEach { link ->
-                _state.value.childNodes.remove(link)
-            }
-
-            currentNodeList.forEach { node ->
-                node.neighbors.split(",").forEach { neighborId ->
-                    val neighborNode = currentNodeList.find { it.id == neighborId.toInt() }
-                    if (neighborNode != null) {
-                        val linkName = "${node.id}_${neighborNode.id}"
-                        val position = node.translation
-                        val orientation = helper.calculateOrientation(node.translation, neighborNode.translation)
-
-                        val newLink = drawer.drawStrip(
-                            _state.value.engine!!,
-                            _state.value.modelLoader!!,
-                            _state.value.arSession!!.createAnchor(Pose(position, orientation)),
-                            _state.value.viewAttachmentManager!!,
-                            _state.value.context!!,
-                            position,
-                            orientation,
-                            linkName
-                        ) {}
-
-                        _state.value.childNodes.add(newLink)
-                    }
-                }
-            }
+        // Используем актуальный способ: полная перерисовка через handler.initializeNodes
+        val state = _state.value
+        if (state.engine != null && state.modelLoader != null && state.arSession != null && state.viewAttachmentManager != null && state.context != null) {
+            val handler = ArPageHandler(
+                viewModel = this,
+                nodeViewModel = nodeViewModel,
+                context = state.context!!,
+                engine = state.engine!!,
+                modelLoader = state.modelLoader!!,
+                childNodes = state.childNodes
+            )
+            handler.initializeNodes(state, isEditMode = state.isEditMode, isQrMode = state.isQrMode)
+        } else {
+            Log.e("ArPageViewModel", "redrawLinks: Не все зависимости инициализированы для перерисовки связей")
         }
     }
 
@@ -426,6 +462,10 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
         _state.value = _state.value.copy(qrBitmap = bitmap)
     }
 
+    private fun setShowRouteInfoBar(show: Boolean) {
+        _state.value = _state.value.copy(showRouteInfoBar = show)
+    }
+
     fun generateQrCodeForNode(node: NodeDb, buildingName: String, buildingAddress: String): Bitmap {
         val qrInfo = QrBuildingInfo(
             buildingId = node.buildingId.toInt(),
@@ -480,6 +520,20 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
             // Здесь должен быть ваш код для получения информации о здании
             // Временно возвращаем моковые данные
             Building(buildingId.toInt(), "Building 1", "Address 1")
+        }
+    }
+
+    fun showDestinationReachedBar() {
+        _state.value = _state.value.copy(
+            showRouteInfoBar = true,
+            distanceToTurn = 0f,
+            turnDirection = "Вы дошли до места назначения",
+            wasRouteActive = true
+        )
+        routeInfoHideJob?.cancel()
+        routeInfoHideJob = viewModelScope.launch {
+            delay(3500)
+            _state.value = _state.value.copy(showRouteInfoBar = false, wasRouteActive = false, turnDirection = "Прямо")
         }
     }
 }

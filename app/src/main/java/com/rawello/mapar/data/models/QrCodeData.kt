@@ -16,7 +16,6 @@ data class QrCodeData(
 
         fun fromJson(json: String): QrCodeData? = runCatching {
             val data = gson.fromJson(json, QrCodeData::class.java)
-            // Проверяем, что тип соответствует ожидаемому
             if (data.type == "mapar_location") {
                 data
             } else {

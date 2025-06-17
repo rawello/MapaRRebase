@@ -5,24 +5,42 @@ import com.rawello.mapar.data.models.NodeDb
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import okhttp3.OkHttpClient
+import com.rawello.mapar.data.TokenManager
 
 object ApiFactory {
     private const val BASE_URL = "http://194.67.84.115:8881/"
-    var TOKEN = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhbm9ueW1vdXMiLCJjcmVhdGVkIjoxNzMwOTk5MjM1NDIwLCJyZWFkT25seSI6dHJ1ZSwiZXhwIjoyMDkwOTk5MjM1fQ.FYNLHrVEZ14Qh0Tu0BbCOJXVeN65jYiTCSjGReSYDG4VrjZ3slThOyeku5NgiFpmPVBir30mZXubbZ3NUMUxbA"
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor(TOKEN))
-        .build()
+    // Провайдер токена (лямбда), по умолчанию возвращает пустую строку
+    private var tokenProvider: (() -> String) = { "" }
+
+    private fun buildOkHttpClient(): OkHttpClient {
+        return TokenManager.buildOkHttpClient(tokenProvider)
+    }
 
     val gson = GsonBuilder()
         .registerTypeAdapter(FloatArray::class.java, StringToFloatArrayAdapter())
         .create()
 
-    private val retrofit: Retrofit = Retrofit.Builder()
+    @Volatile
+    private var retrofit: Retrofit = Retrofit.Builder()
         .baseUrl(BASE_URL)
-        .client(okHttpClient)
+        .client(buildOkHttpClient())
         .addConverterFactory(GsonConverterFactory.create(gson))
         .build()
 
-    val apiService: ApiService = retrofit.create(ApiService::class.java)
+    @Volatile
+    var apiService: ApiService = retrofit.create(ApiService::class.java)
+        private set
+
+    // Вызывать при смене токена
+    fun updateTokenProvider(provider: () -> String) {
+        tokenProvider = provider
+        // Пересоздаём retrofit и apiService с новым токеном
+        retrofit = Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(buildOkHttpClient())
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+        apiService = retrofit.create(ApiService::class.java)
+    }
 }

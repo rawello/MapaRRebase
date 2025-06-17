@@ -48,7 +48,6 @@ fun NodesListContent(nodes: List<NodeDb>, onPointsSelected: (String, String) -> 
     var selectedPoint2 by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Фильтруем сначала по типу "view", затем по поисковому запросу
     val filteredNodes = nodes
         .filter { it.type == "view" }
         .filter { it.title.contains(searchQuery, ignoreCase = true) }
@@ -79,9 +78,12 @@ fun NodesListContent(nodes: List<NodeDb>, onPointsSelected: (String, String) -> 
             )
             Text(
                 text = if (selectedPoint1 != null && selectedPoint2 != null) {
-                    "$selectedPoint1 -> $selectedPoint2"
+                    val from = filteredNodes.find { it.id.toString() == selectedPoint1 }?.title ?: selectedPoint1
+                    val to = filteredNodes.find { it.id.toString() == selectedPoint2 }?.title ?: selectedPoint2
+                    "$from -> $to"
                 } else if (selectedPoint1 != null) {
-                    "$selectedPoint1 -> Куда"
+                    val from = filteredNodes.find { it.id.toString() == selectedPoint1 }?.title ?: selectedPoint1
+                    "$from -> Куда"
                 } else {
                     "Откуда -> Куда"
                 },
@@ -100,14 +102,15 @@ fun NodesListContent(nodes: List<NodeDb>, onPointsSelected: (String, String) -> 
                         isSelected = filteredNodes[index].id.toString() == selectedPoint1 || filteredNodes[index].id.toString() == selectedPoint2,
                         isFirstSelected = filteredNodes[index].id.toString() == selectedPoint1,
                         onClick = {
+                            val idStr = filteredNodes[index].id.toString()
                             if (selectedPoint1 == null) {
-                                selectedPoint1 = filteredNodes[index].id.toString()
+                                selectedPoint1 = idStr
                             } else if (selectedPoint2 == null) {
-                                if (selectedPoint1 != filteredNodes[index].id.toString()) {
-                                    selectedPoint2 = filteredNodes[index].id.toString()
+                                if (selectedPoint1 != idStr) {
+                                    selectedPoint2 = idStr
                                 }
                             } else {
-                                selectedPoint1 = filteredNodes[index].id.toString()
+                                selectedPoint1 = idStr
                                 selectedPoint2 = null
                             }
                         }

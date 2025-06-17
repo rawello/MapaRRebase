@@ -54,11 +54,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
-            // Инициализируем TokenManager при запуске
-            TokenManager.getInstance(this@MainActivity).initialize()
+            // Сначала связываем TokenManager с ApiFactory
+            val tokenManager = TokenManager.getInstance(this@MainActivity)
+            tokenManager.bindApiFactoryTokenProvider()
+            tokenManager.initialize()
         }
 
         (application as MapaRApplication).appComponent.inject(this)
+
+        val isFirstLaunch = com.rawello.mapar.data.preferences.FirstLaunchManager.isFirstLaunch(this)
+        if (isFirstLaunch) {
+            com.rawello.mapar.data.preferences.FirstLaunchManager.setFirstLaunch(this, false)
+        }
 
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
@@ -69,7 +76,10 @@ class MainActivity : ComponentActivity() {
 
                 Surface {
                     val navController = rememberNavController()
-                    NavHost(navController = navController, startDestination = Routes.First.string) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = if (isFirstLaunch) Routes.First.string else Routes.Second.string
+                    ) {
                         composable(Routes.First.string) { OnboardingScreen(navController) }
                         composable(Routes.Second.string) { SelectBuildScreen(navController, nodeViewModel) }
                         composable(Routes.QrAlpha.string) { QrScanningScreen(navController = navController) }
@@ -85,11 +95,11 @@ class MainActivity : ComponentActivity() {
                                 navController = navController,
                                 buildingId = backStackEntry.arguments?.getInt("buildingId") ?: 0,
                                 buildingName = backStackEntry.arguments?.getString("buildingName") ?: "",
+                                editMode = false,
                                 arPageViewModel = arPageViewModel,
                                 nodeViewModel = nodeViewModel
                             )
                         }
-                        
                         composable(
                             route = Routes.ArSceneWithDestination.string,
                             arguments = listOf(
@@ -103,6 +113,24 @@ class MainActivity : ComponentActivity() {
                                 buildingId = backStackEntry.arguments?.getInt("buildingId") ?: 0,
                                 buildingName = backStackEntry.arguments?.getString("buildingName") ?: "",
                                 destinationNodeId = backStackEntry.arguments?.getInt("destinationNodeId"),
+                                arPageViewModel = arPageViewModel,
+                                nodeViewModel = nodeViewModel
+                            )
+                        }
+                        composable(
+                            route = "arPage/{buildingId}/{buildingName}?editMode={editMode}",
+                            arguments = listOf(
+                                navArgument("buildingId") { type = NavType.IntType },
+                                navArgument("buildingName") { type = NavType.StringType },
+                                navArgument("editMode") { type = NavType.BoolType; defaultValue = false }
+                            )
+                        ) { backStackEntry ->
+                            val editMode = backStackEntry.arguments?.getBoolean("editMode") ?: false
+                            ArPage(
+                                navController = navController,
+                                buildingId = backStackEntry.arguments?.getInt("buildingId") ?: 0,
+                                buildingName = backStackEntry.arguments?.getString("buildingName") ?: "",
+                                editMode = editMode,
                                 arPageViewModel = arPageViewModel,
                                 nodeViewModel = nodeViewModel
                             )

@@ -135,7 +135,8 @@ class NodeDrawers {
             val nextPosition = bezierPoints[i + 1]
             val orientation = helper.calculateOrientation(modelPosition, nextPosition)
 
-            viewAttachmentManager?.toString()?.let { Log.d("tag", it) }
+            viewAttachmentManager?.toString()?.let { //Log.d("tag", it)
+            }
             viewAttachmentManager?.let { vam ->
                 context?.let { ctx ->
                     arSession?.let { session ->
@@ -147,6 +148,50 @@ class NodeDrawers {
                             ctx,
                             modelPosition,
                             orientation,
+                        ) { viewNode ->
+                            Log.d("tag", viewNode.toString())
+                        }
+                    }
+                }
+            }
+        }
+        Log.d("updateChildNodes", childNodes.size.toString())
+        return childNodes
+    }
+
+    fun drawLinkSegment(
+        engine: Engine,
+        modelLoader: ModelLoader,
+        arSession: Session?,
+        viewAttachmentManager: ViewAttachmentManager?,
+        context: Context?,
+        path: List<Dijkstra.Node>,
+        childNodes: SnapshotStateList<Node>
+    ): SnapshotStateList<Node> {
+        if (path.size < 2) return childNodes
+
+        val bezierPoints = helper.generateBezierPath(path)
+
+        for (i in 0 until bezierPoints.size - 1) {
+            val modelPosition = bezierPoints[i]
+            val nextPosition = bezierPoints[i + 1]
+            val orientation = helper.calculateOrientation(modelPosition, nextPosition)
+
+            viewAttachmentManager?.toString()?.let { //Log.d("tag", it)
+            }
+            viewAttachmentManager?.let { vam ->
+                context?.let { ctx ->
+                    arSession?.let { session ->
+                        childNodes += drawViewNodePaths(
+                            engine,
+                            modelLoader,
+                            session.createAnchor(Pose(modelPosition, orientation)),
+                            vam,
+                            ctx,
+                            modelPosition,
+                            orientation,
+                            R.layout.route_link,
+                            R.drawable.ic_up_link
                         ) { viewNode ->
                             Log.d("tag", viewNode.toString())
                         }
@@ -172,6 +217,8 @@ class NodeDrawers {
         context: Context,
         position: FloatArray?,
         quaternion: FloatArray?,
+        layoutResId: Int = R.layout.route_node,
+        picId: Int = R.drawable.ic_up_arrow,
         onViewNodeLoaded: (AnchorNode?) -> Unit
     ): AnchorNode {
         Log.d("tag", "path path path")
@@ -186,12 +233,50 @@ class NodeDrawers {
         val viewNode = ViewNode(engine, modelLoader, viewAttachmentManager).apply {
             isEditable = false
 
-            loadView(context, R.layout.route_node, onLoaded = { _, view ->
+            loadView(context, layoutResId, onLoaded = { _, view ->
                 val icon = view.findViewById<ImageView>(R.id.imageView)
-                icon.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_up_arrow))
+                icon.setImageDrawable(ContextCompat.getDrawable(context, picId))
 
                 this.name = "arrow"
                 anchorNode.name = "arrow"
+            },
+                onError = {
+                    Log.d("error draw", it.toString())
+                    if (it.message != null)
+                        Log.d("error draw", it.message!!)
+                    onViewNodeLoaded(null)
+                })
+            this.scale = Scale(1.5f, 1.5f, 1.5f)
+            this.isVisible = true
+
+            anchorNode.addChildNode(this)
+        }
+        return anchorNode
+    }
+
+    fun drawLinkViewNode(
+        engine: Engine,
+        modelLoader: ModelLoader,
+        anchor: Anchor,
+        viewAttachmentManager: ViewAttachmentManager,
+        context: Context,
+        position: FloatArray?,
+        quaternion: FloatArray?,
+        onViewNodeLoaded: (AnchorNode?) -> Unit
+    ): AnchorNode {
+        val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
+            if (position != null && quaternion != null) {
+                pose = Pose(position, quaternion)
+                Log.d("AnchorNodePose", "[LINK] Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+            }
+        }
+
+        val viewNode = ViewNode(engine, modelLoader, viewAttachmentManager).apply {
+            isEditable = false
+
+            loadView(context, R.layout.route_link, onLoaded = { _, view ->
+                this.name = "link"
+                anchorNode.name = "link"
             },
                 onError = {
                     Log.d("error draw", it.toString())
@@ -271,7 +356,7 @@ class NodeDrawers {
         val viewNode = ViewNode(engine, modelLoader, viewAttachmentManager).apply {
             isEditable = true
 
-            loadView(context, R.layout.route_link, onLoaded = { instance, view ->
+            loadView(context, R.layout.route_node, onLoaded = { instance, view ->
                 val icon = view.findViewById<ImageView>(R.id.imageView)
                 icon.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_up_link))
 
@@ -291,5 +376,84 @@ class NodeDrawers {
             Log.e("tag", "linked")
             return anchorNode
         }
+    }
+
+    /**
+     * Рисует прямую линию между двумя точками (NodeDb) с уникальным именем edge_{id1}_{id2}
+     * Линия будет двигаться за точками при их перемещении (если вызывать этот метод при каждом рендере)
+     */
+    fun drawConnectionLineBetweenNodes(
+        engine: Engine,
+        modelLoader: ModelLoader,
+        arSession: Session?,
+        viewAttachmentManager: ViewAttachmentManager?,
+        context: Context?,
+        node1: NodeDb,
+        node2: NodeDb
+    ): AnchorNode? {
+        if (arSession == null || viewAttachmentManager == null || context == null) return null
+        val edgeName = "edge_${minOf(node1.id, node2.id)}_${maxOf(node1.id, node2.id)}"
+        val pos1 = node1.translation
+        val pos2 = node2.translation
+        val center = floatArrayOf(
+            (pos1[0] + pos2[0]) / 2f,
+            (pos1[1] + pos2[1]) / 2f,
+            (pos1[2] + pos2[2]) / 2f
+        )
+        val orientation = PathHelper().calculateOrientation(pos1, pos2)
+        val length = PathHelper().distance(pos1, pos2)
+        val anchor = arSession.createAnchor(Pose(center, orientation))
+        val anchorNode = drawConnectionViewNode(
+            engine = engine,
+            modelLoader = modelLoader,
+            anchor = anchor,
+            viewAttachmentManager = viewAttachmentManager,
+            context = context,
+            position = center,
+            quaternion = orientation,
+            edgeName = edgeName,
+            length = length
+        ) {
+            Log.d("NodeDrawers", "[DEBUG] drawConnectionViewNode onViewNodeLoaded: $edgeName, anchorNode=$it")
+        }
+        return anchorNode
+    }
+
+    fun drawConnectionViewNode(
+        engine: Engine,
+        modelLoader: ModelLoader,
+        anchor: Anchor,
+        viewAttachmentManager: ViewAttachmentManager,
+        context: Context,
+        position: FloatArray?,
+        quaternion: FloatArray?,
+        edgeName: String,
+        length: Float,
+        onViewNodeLoaded: (AnchorNode?) -> Unit
+    ): AnchorNode {
+        val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
+            if (position != null && quaternion != null) {
+                pose = Pose(position, quaternion)
+                Log.d("AnchorNodePose", "[CONNECTION] Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+            }
+            name = edgeName
+        }
+        val viewNode = ViewNode(engine, modelLoader, viewAttachmentManager).apply {
+            isEditable = false
+            loadView(context, R.layout.route_node, onLoaded = { _, view ->
+                this.name = edgeName
+                anchorNode.name = edgeName
+                this.scale = Scale(length, 1.5f, 1.5f)
+                this.isVisible = true
+                anchorNode.addChildNode(this)
+                onViewNodeLoaded(anchorNode)
+            }, onError = {
+                Log.d("error draw", it.toString())
+                if (it.message != null)
+                    Log.d("error draw", it.message!!)
+                onViewNodeLoaded(null)
+            })
+        }
+        return anchorNode
     }
 }

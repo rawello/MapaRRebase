@@ -30,7 +30,7 @@ interface ApiService {
 
     // Защищенные эндпоинты (требуют авторизации)
     @POST("api/users/favorites")
-    suspend fun updateFavorites(@Body favorites: List<Long>): String
+    suspend fun updateFavorites(@Body favorites: List<Long>)
 
     @GET("api/users/favorites")
     suspend fun getFavorites(): List<Long>

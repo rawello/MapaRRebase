@@ -7,6 +7,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.rawello.mapar.data.models.QrCodeData
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 
 object QrCodeGenerator {
     private val writer = QRCodeWriter()
@@ -33,11 +35,11 @@ object QrCodeGenerator {
         
         val content = Gson().toJson(qrCodeData)
         val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, QR_SIZE, QR_SIZE, hints)
-        val bitmap = Bitmap.createBitmap(QR_SIZE, QR_SIZE, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(QR_SIZE, QR_SIZE)
         
         for (x in 0 until QR_SIZE) {
             for (y in 0 until QR_SIZE) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
+                bitmap[x, y] = if (bitMatrix[x, y]) Color.BLACK else Color.WHITE
             }
         }
         

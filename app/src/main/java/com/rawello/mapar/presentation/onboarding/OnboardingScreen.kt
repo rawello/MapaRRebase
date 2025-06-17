@@ -27,7 +27,7 @@ fun OnboardingScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding(), // Добавляем отступ от нижней панели навигации
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -86,10 +86,6 @@ fun OnboardingPage(page: Int) {
         ) {
             Image(
                 painter = painterResource(id = when (page) {
-//                    0 -> R.drawable.onboard1
-//                    1 -> R.drawable.onboard2
-//                    2 -> R.drawable.onboard3
-//                    else -> R.drawable.onboard4
                     0 -> R.drawable.model
                     1 -> R.drawable.vr_camera
                     2 -> R.drawable.ai

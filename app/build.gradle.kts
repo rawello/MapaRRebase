@@ -77,6 +77,7 @@ dependencies {
     //retrofit
     implementation (libs.retrofit)
     implementation (libs.converter.gson)
+    implementation("com.squareup.okhttp3:logging-interceptor:5.0.0-alpha.16")
 
     // Room
     implementation (libs.androidx.room.runtime)

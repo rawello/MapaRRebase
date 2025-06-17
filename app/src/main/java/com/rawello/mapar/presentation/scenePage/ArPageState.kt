@@ -18,7 +18,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 
 data class ArPageState(
     val isQrMode: Boolean = false,
-    val nodeList: List<NodeDb> = emptyList(),
+    var nodeList: List<NodeDb> = emptyList(),
     var nodeGraph: Graph = Graph(),
     var selectedPoint1: String? = null,
     var selectedPoint2: String? = null,
@@ -30,7 +30,7 @@ data class ArPageState(
     var arSession: Session? = null,
     var frame: Frame? = null,
     val model: String = "",
-    val showBottomSheet: Boolean = false,
+    var showBottomSheet: Boolean = false,
     var buttonText1: String = "Откуда",
     var buttonText2: String = "Куда",
     var engine: Engine? = null,
@@ -41,7 +41,7 @@ data class ArPageState(
     var isLoading: Boolean = false,
     val distanceToTurn: Float = 0f,
     val totalDistance: Float = 0f,
-    val turnDirection: String = "Прямо",
+    var turnDirection: String = "Прямо",
     var isAnonymous: Boolean = true,
     var isBuildingOwner: Boolean = false,
     var isEditMode: Boolean = false,
@@ -49,5 +49,7 @@ data class ArPageState(
     var buildingName: String = "",
     var showQrDialog: Boolean = false,
     var qrBitmap: Bitmap? = null,
-    var destinationNodeId: Int? = null
+    var destinationNodeId: Int? = null,
+    var showRouteInfoBar: Boolean = false,
+    var wasRouteActive: Boolean = false
 )

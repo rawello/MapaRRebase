@@ -78,7 +78,6 @@ fun QrScanningScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     
-    // Эффект для освобождения ресурсов при уничтожении экрана
     DisposableEffect(Unit) {
         onDispose {
             try {
@@ -92,7 +91,6 @@ fun QrScanningScreen(
 
     LaunchedEffect(Unit) {
         viewModel.setNavigationCallback { qrCodeData ->
-            // Освобождаем ресурсы камеры перед навигацией
             try {
                 cameraProvider?.unbindAll()
                 cameraProvider = null
@@ -113,7 +111,7 @@ fun QrScanningScreen(
     LaunchedEffect(uiState.confirmed) {
         if (uiState.confirmed && uiState.qrCodeData != null) {
             val qrData = uiState.qrCodeData!!
-            delay(500) // Добавляем небольшую задержку
+            delay(500)
             navController.navigate(
                 Routes.ArScene.string
                     .replace("{buildingId}", qrData.buildingId.toString())
@@ -200,7 +198,7 @@ fun QrScanningScreen(
                                 Text("Здание: ${uiState.qrCodeData?.buildingName}")
                                 Text("Адрес: ${uiState.qrCodeData?.buildingAddress}")
                                 Text("Точка: ${uiState.qrCodeData?.nodeTitle}")
-                                Text("Продолжить итерацию?")
+                                Text("Перейти к найденной локации?")
                             }
                         },
                         confirmButton = {
