@@ -453,6 +453,10 @@ class ArPageHandler(
                     viewModel.updateNode(node)
                 }
 
+                // Обновляем nodeList и граф
+                viewModel.handleIntent(ArPageIntent.SetNodeList(adjustedNodes))
+                viewModel.handleIntent(ArPageIntent.SetNodeGraph(com.rawello.mapar.domain.graphHelpers.createGraph(adjustedNodes)))
+
                 // Навигация назад
                 navController.navigateUp()
                 // Ждем 1 секунду перед повторной навигацией
@@ -463,10 +467,9 @@ class ArPageHandler(
                         .replace("{buildingId}", state.buildingId.toString())
                         .replace("{buildingName}", state.buildingName)
                 )
-                // --- ДОБАВЛЕНО: сбросить выбранные точки и перестроить маршрут ---
+                // --- Сбросить выбранные точки и перестроить маршрут ---
                 viewModel.handleIntent(ArPageIntent.SelectPoint(null, null))
                 viewModel.handleIntent(ArPageIntent.BuildPath)
-                
                 viewModel.handleIntent(ArPageIntent.ShowSnackbar("Местоположение установлено"))
             } catch (e: Exception) {
                 viewModel.handleIntent(ArPageIntent.ShowSnackbar("Ошибка при установке местоположения: ${e.message}"))

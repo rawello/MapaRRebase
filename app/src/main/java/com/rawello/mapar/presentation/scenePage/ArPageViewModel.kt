@@ -99,6 +99,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                 is ArPageIntent.SetShowBottomSheet -> setShowBottomSheet(intent.showBottomSheet)
                 is ArPageIntent.SetButtonText -> setButtonText(intent.buttonText1, intent.buttonText2)
                 is ArPageIntent.SetNodeList -> setNodeList(intent.nodeList)
+                is ArPageIntent.SetNodeGraph -> setNodeGraph(intent.nodeGraph)
                 is ArPageIntent.SetLoading -> setLoading(intent.isLoading)
                 is ArPageIntent.SetDistanceToTurn -> setDistanceToTurn(intent.distanceToTurn)
                 is ArPageIntent.SetTotalDistance -> setTotalDistance(intent.totalDistance)
@@ -199,8 +200,8 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
         Log.d("buildPath_debug", "resolved startNodeId: $startNodeId, endNodeId: $endNodeId")
 
         if (startNodeId != null && endNodeId != null && startNodeId != endNodeId) {
-            val startNode = _state.value.nodeGraph.getGraph().keys.find { it.id == startNodeId }
-            val endNode = _state.value.nodeGraph.getGraph().keys.find { it.id == endNodeId }
+            val startNode = _state.value.nodeGraph.getGraph().keys.find { it.id == endNodeId }
+            val endNode = _state.value.nodeGraph.getGraph().keys.find { it.id == startNodeId }
 
             Log.d("buildPath_debug", "startNode: $startNode, endNode: $endNode")
 
@@ -293,7 +294,14 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     }
 
     private fun setNodeList(nodeList: List<NodeDb>) {
-        _state.value = _state.value.copy(nodeList = nodeList)
+        _state.value = _state.value.copy(
+            nodeList = nodeList,
+            nodeGraph = createGraph(nodeList)
+        )
+    }
+
+    private fun setNodeGraph(nodeGraph: com.rawello.mapar.domain.pathfinder.Graph) {
+        _state.value = _state.value.copy(nodeGraph = nodeGraph)
     }
 
     private fun setLoading(isLoading: Boolean) {

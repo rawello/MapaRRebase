@@ -46,6 +46,7 @@ sealed class ArPageIntent {
     data class SetShowBottomSheet(val showBottomSheet: Boolean) : ArPageIntent()
     data class SetButtonText(val buttonText1: String, val buttonText2: String) : ArPageIntent()
     data class SetNodeList(val nodeList: List<NodeDb>) : ArPageIntent()
+    data class SetNodeGraph(val nodeGraph: com.rawello.mapar.domain.pathfinder.Graph) : ArPageIntent()
     data class SetLoading(val isLoading: Boolean) : ArPageIntent()
     data class SetDistanceToTurn(val distanceToTurn: Float) : ArPageIntent()
     data class SetTotalDistance(val totalDistance: Float) : ArPageIntent()

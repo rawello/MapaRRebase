@@ -1879,7 +1879,7 @@ fun ArPage(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(8.dp)
+                                        .padding(6.dp)
                                 ) {
                                     Icon(Icons.Default.Share, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
