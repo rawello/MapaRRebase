@@ -84,7 +84,7 @@ fun QrScanningScreen(
                 cameraProvider?.unbindAll()
                 cameraProvider = null
             } catch (e: Exception) {
-                Log.e("QrScanningScreen", "Error unbinding camera", e)
+                Log.e("QrScanningScreen", "Ошибка при отключении камеры", e)
             }
         }
     }
@@ -95,7 +95,7 @@ fun QrScanningScreen(
                 cameraProvider?.unbindAll()
                 cameraProvider = null
             } catch (e: Exception) {
-                Log.e("QrScanningScreen", "Error unbinding camera", e)
+                Log.e("QrScanningScreen", "Ошибка при отключении камеры", e)
             }
             
             navController.navigate(Routes.ArScene.string

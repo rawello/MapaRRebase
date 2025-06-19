@@ -50,13 +50,11 @@ class TokenViewModel @Inject constructor(private val tokenDao: TokenDao) : ViewM
 
     suspend fun isBuildingOwner(buildingId: Long): Boolean {
         try {
-            // Проверяем наличие анонимного пользователя
             val anonymousToken = tokenDao.getTokenByName("Anonymous")
             if (anonymousToken != null) {
                 return false
             }
 
-            // Получаем токен авторизованного пользователя
             val userToken = tokenDao.getAllTokens().find { it.name != "Anonymous" }?.token
             if (userToken != null) {
                 try {
@@ -79,13 +77,11 @@ class TokenViewModel @Inject constructor(private val tokenDao: TokenDao) : ViewM
         viewModelScope.launch {
             val anonymousToken = ApiFactory.apiService.getAnonymousToken()
             tokenDao.deleteTokenByName("Anonymous")
-            // Удаляем все существующие токены пользователей
             tokenDao.getAllTokens().forEach { token ->
                 if (token.name != "Anonymous") {
                     tokenDao.deleteToken(token)
                 }
             }
-            // Добавляем новый анонимный токен
             tokenDao.insertToken(Token("Anonymous", anonymousToken.token))
         }
     }

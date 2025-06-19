@@ -56,7 +56,6 @@ class QrScanViewModel : ViewModel() {
                         confirmed = false
                     )
                 }
-                // Прямой вызов диалога без ожидания LaunchedEffect
                 _uiState.value.qrCodeData?.let { data ->
                     Log.d("QrScanViewModel", "Showing confirmation dialog for location: ${data.buildingName}")
                 }

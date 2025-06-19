@@ -55,7 +55,7 @@ class ArPageHandler(
             if (state.readyToPlace && !state.linking) {
                 handlePlacementWithTitle(motionEvent, state, title)
             } else if (!state.readyToPlace && !state.linking) {
-                Log.d("pipes", "zdes")
+                Log.d("pipes", "здесь")
             } else if (state.linking && node != null) {
                 handleLinking(node, state)
             }
@@ -78,7 +78,6 @@ class ArPageHandler(
             viewAttachmentManager?.let { vam ->
                 val anchorNode = drawer.drawView(engine, modelLoader, vam, context, anchor, nodeViewModel, false, title)
                 state.childNodes += anchorNode
-                // Инкрементально добавляем NodeDb
                 val newId = if (state.nodeList.isEmpty()) 1 else 1 + state.nodeList.maxOf { it.id }
                 val nodeDb = com.rawello.mapar.data.models.NodeDb(
                     id = newId,
@@ -110,7 +109,6 @@ class ArPageHandler(
                 true
             )
             state.childNodes += anchorNode
-            // Инкрементально добавляем NodeDb
             val nodeDb = com.rawello.mapar.data.models.NodeDb(
                 id = newId,
                 buildingId = state.buildingId.toLong(),
@@ -132,10 +130,9 @@ class ArPageHandler(
                 val foundNode = state.nodeList.find { it.id.toString() == selectedNode?.name }
                 foundNode?.let {
                     actions.updateNodeNeighbors(true, foundNode, nodeName.toInt(), nodeViewModel, state.nodeList)
-                    // После добавления связи сразу рисуем линию между этими точками
                     val neighbor = state.nodeList.find { it.id == nodeName.toInt() }
                     if (neighbor != null) {
-                        Log.d("ArPageHandler", "handleLinking: drawing connection from node ${foundNode.id} to ${neighbor.id}")
+                        Log.d("ArPageHandler", "handleLinking: рисуем соединение от точки ${foundNode.id} к ${neighbor.id}")
                         val anchorNode = drawer.drawConnectionLineBetweenNodes(
                             engine = engine,
                             modelLoader = modelLoader,
@@ -189,7 +186,6 @@ class ArPageHandler(
     fun handleSessionUpdate(session: Session, frame: Frame?, state: ArPageState) {
         viewModel.viewModelScope.launch {
             if (state.arSession != session) {
-                //Log.d("ArPageHandler", "handleSessionUpdate: updating arSession in state")
                 viewModel.handleIntent(ArPageIntent.SetArSession(session))
             }
             if (state.frame != frame) {
@@ -200,26 +196,21 @@ class ArPageHandler(
             frame?.let { fr ->
                 if (fr.isTrackingPlane()) {
                     if ((state.firstLoad || state.childNodes.isEmpty()) && state.arSession != null) {
-                        //Log.d("ArPageHandler", "handleSessionUpdate: ready to initialize nodes, nodeList.size=${state.nodeList.size}")
                         try {
                             viewModel.handleIntent(ArPageIntent.SetLoading(true))
                             if (state.nodeList.isNotEmpty()) {
-                                Log.d("ArPageHandler", "Initializing ${state.nodeList.size} nodes, isEditMode=${state.isEditMode}, isQrMode=${state.isQrMode}")
+                                Log.d("ArPageHandler", "Инициализация ${state.nodeList.size} точек, isEditMode=${state.isEditMode}, isQrMode=${state.isQrMode}")
                                 initializeNodes(state, isEditMode = state.isEditMode, isQrMode = state.isQrMode)
                             } else {
-                                Log.d("ArPageHandler", "No nodes to initialize")
+                                Log.d("ArPageHandler", "Нет точек для инициализации")
                             }
                         } catch (e: Exception) {
-                            Log.e("ArPageHandler", "Error initializing nodes", e)
+                            Log.e("ArPageHandler", "Ошибка при инициализации точек", e)
                         } finally {
                             viewModel.handleIntent(ArPageIntent.SetLoading(false))
                             viewModel.handleIntent(ArPageIntent.SetFirstLoad(false))
                         }
-                    } else {
-                        //Log.d("ArPageHandler", "handleSessionUpdate: not firstLoad and childNodes not empty or arSession is null")
                     }
-                } else {
-                    //Log.d("ArPageHandler", "handleSessionUpdate: frame is not tracking plane")
                 }
                 val currentPosition = getCurrentCameraPosition(fr)
                 updateRoute(currentPosition, state)
@@ -227,33 +218,30 @@ class ArPageHandler(
                 if (state.path.isNotEmpty()) {
                     updateTurnInfo(state.path)
                 }
-            } ?: Log.d("ArPageHandler", "handleSessionUpdate: frame is null")
+            } ?: Log.d("ArPageHandler", "handleSessionUpdate: frame равен null")
         }
     }
 
     fun initializeNodes(state: ArPageState, isEditMode: Boolean, isQrMode: Boolean) {
-        Log.d("ArPageHandler", "Starting node initialization with ${state.nodeList.size} nodes, isEditMode=$isEditMode, isQrMode=$isQrMode, arSession=${state.arSession}, viewAttachmentManager=${state.viewAttachmentManager}, context=${state.context}")
-        // Полный перезапуск: очищаем все childNodes
+        Log.d("ArPageHandler", "Начало инициализации точек с ${state.nodeList.size} точками, isEditMode=$isEditMode, isQrMode=$isQrMode, arSession=${state.arSession}, viewAttachmentManager=${state.viewAttachmentManager}, context=${state.context}")
         state.childNodes.clear()
-        // UI движение: временно меняем selectedPoint1 для форсирования recomposition
         state.selectedPoint1 = null
         if (state.nodeList.isNotEmpty()) {
             try {
                 val nodesToShow = if (isEditMode && !isQrMode) {
-                    Log.d("ArPageHandler", "initializeNodes: edit mode, rendering all nodes")
-                    state.nodeList // ВСЕ точки, включая связные, в режиме редактирования
+                    Log.d("ArPageHandler", "initializeNodes: режим редактирования, рендеринг всех точек")
+                    state.nodeList
                 } else {
-                    Log.d("ArPageHandler", "initializeNodes: view mode, rendering only view nodes")
-                    state.nodeList.filter { it.type == "view" } // Только view в режиме просмотра
+                    Log.d("ArPageHandler", "initializeNodes: режим просмотра, рендеринг только view точек")
+                    state.nodeList.filter { it.type == "view" }
                 }
-                // Рендерим все точки заново
                 nodesToShow.forEach { node ->
                     try {
-                        Log.d("ArPageHandler", "initializeNodes: rendering node id=${node.id}, type=${node.type}, translation=${node.translation.contentToString()}, quaternion=${node.quaternion.contentToString()}")
+                        Log.d("ArPageHandler", "initializeNodes: рендеринг точки id=${node.id}, type=${node.type}, translation=${node.translation.contentToString()}, quaternion=${node.quaternion.contentToString()}")
                         state.arSession?.let { arSess ->
                             val anchor = arSess.createAnchor(Pose(node.translation, node.quaternion))
                             val anchorNode = if (node.type == "view") {
-                                Log.d("ArPageHandler", "initializeNodes: drawing view node id=${node.id}")
+                                Log.d("ArPageHandler", "initializeNodes: рендеринг view точки id=${node.id}")
                                 drawer.drawView(
                                     engine,
                                     modelLoader,
@@ -265,7 +253,7 @@ class ArPageHandler(
                                     node.title
                                 )
                             } else {
-                                Log.d("ArPageHandler", "initializeNodes: drawing model node id=${node.id}")
+                                Log.d("ArPageHandler", "initializeNodes: рендеринг model точки id=${node.id}")
                                 drawer.drawModelNode(
                                     engine = engine,
                                     modelLoader = modelLoader,
@@ -281,16 +269,14 @@ class ArPageHandler(
                                 )
                             }
                             state.childNodes += anchorNode
-                        } ?: Log.e("ArPageHandler", "initializeNodes: arSession is null for node id=${node.id}")
+                        } ?: Log.e("ArPageHandler", "initializeNodes: arSession равен null для точки id=${node.id}")
                     } catch (e: Exception) {
-                        Log.e("ArPageHandler", "Error initializing node ${node.id}: ${e.message}")
+                        Log.e("ArPageHandler", "Ошибка при инициализации точки ${node.id}: ${e.message}")
                     }
                 }
-                // Даем UI время обновиться
                 kotlinx.coroutines.runBlocking { delay(120) }
-                // В режиме редактирования рендерим все связи
                 if (isEditMode && !isQrMode) {
-                    Log.d("ArPageHandler", "initializeNodes: rendering connections between nodes (TEST: drawLinkSegment)")
+                    Log.d("ArPageHandler", "initializeNodes: рендеринг связей между точками")
                     state.nodeList.forEach { node ->
                         node.neighbors.split(",").mapNotNull { it.toIntOrNull() }
                             .forEach { neighborId ->
@@ -298,7 +284,7 @@ class ArPageHandler(
                                     val neighbor = state.nodeList.find { it.id == neighborId }
                                     if (neighbor != null) {
                                         try {
-                                            Log.d("ArPageHandler", "initializeNodes: drawing link from node ${node.id} to $neighborId (TEST)")
+                                            Log.d("ArPageHandler", "initializeNodes: рендеринг связи от точки ${node.id} к $neighborId")
                                             val path = listOf(
                                                 com.rawello.mapar.domain.pathfinder.Dijkstra.Node(
                                                     id = node.id.toString(),
@@ -321,37 +307,35 @@ class ArPageHandler(
                                                 )
                                             }
                                         } catch (e: Exception) {
-                                            Log.e("ArPageHandler", "Ошибка создания связи (drawLinkSegment): ${e.message}")
+                                            Log.e("ArPageHandler", "Ошибка создания связи: ${e.message}")
                                         }
                                     }
                                 }
                             }
                     }
                 }
-                // UI движение: временно включаем и выключаем showBottomSheet для форсирования обновления UI
                 state.showBottomSheet = true
                 kotlinx.coroutines.runBlocking { delay(60) }
                 state.showBottomSheet = false
-                // UI движение: меняем selectedPoint1 обратно (или любое другое поле, чтобы форсировать recomposition)
                 state.selectedPoint1 = null
             } catch (e: Exception) {
-                Log.e("ArPageHandler", "Error in node initialization: ${e.message}")
+                Log.e("ArPageHandler", "Ошибка при инициализации точек: ${e.message}")
             } finally {
-                Log.d("ArPageHandler", "initializeNodes: finished node initialization")
+                Log.d("ArPageHandler", "initializeNodes: завершение инициализации точек")
             }
         } else {
-            Log.d("ArPageHandler", "initializeNodes: nodeList is empty, nothing to render")
+            Log.d("ArPageHandler", "initializeNodes: nodeList пуст, нечего рендерить")
         }
     }
 
     fun onViewCreated(view: View, state: ArPageState) {
-        Log.d("ArPageHandler", "onViewCreated: called, view=$view, state.isEditMode=${state.isEditMode}, state.isQrMode=${state.isQrMode}, arSession=${state.arSession}")
+        Log.d("ArPageHandler", "onViewCreated: вызвано, view=$view, state.isEditMode=${state.isEditMode}, state.isQrMode=${state.isQrMode}, arSession=${state.arSession}")
         viewAttachmentManager = ViewAttachmentManager(view.context, view)
         viewModel.state.value.engine = engine
         viewModel.state.value.modelLoader = modelLoader
         viewModel.state.value.viewAttachmentManager = viewAttachmentManager
         viewAttachmentManager?.onResume()
-        Log.d("ArPageHandler", "onViewCreated: viewAttachmentManager initialized, engine/modelLoader set")
+        Log.d("ArPageHandler", "onViewCreated: viewAttachmentManager инициализирован, engine/modelLoader установлены")
     }
 
     fun onViewUpdated(view: View) {
@@ -376,13 +360,11 @@ class ArPageHandler(
         val camera = frame.camera
         val cameraPose = camera.displayOrientedPose
 
-        // Вычисляем смещение относительно точки отсчета
         val offsetPosition = FloatArray(3)
         offsetPosition[0] = targetPosition[0] - originPosition[0]
         offsetPosition[1] = targetPosition[1] - originPosition[1]
         offsetPosition[2] = targetPosition[2] - originPosition[2]
 
-        // Получаем кватернион поворота камеры для сохранения ориентации
         val cameraRotation = FloatArray(4)
         cameraPose.getRotationQuaternion(cameraRotation, 0)
 
@@ -398,7 +380,6 @@ class ArPageHandler(
         val becameEmpty = path.isEmpty() && wasNotEmpty
         state.path = path
 
-        // Показываем окно только один раз, когда маршрут только что закончился
         if (becameEmpty) {
             viewModel.handleIntent(ArPageIntent.ShowSnackbar("Вы достигли конца маршрута"))
             viewModel.showDestinationReachedBar()
@@ -408,7 +389,6 @@ class ArPageHandler(
 
     private fun isPointPassed(currentPosition: FloatArray, pointPosition: FloatArray): Boolean {
         val distance = PathHelper().distance(currentPosition, pointPosition)
-        //Log.d("distance__", distance.toString())
         return distance < 2.0f
     }
 
@@ -433,7 +413,6 @@ class ArPageHandler(
                     return@launch
                 }
                 
-                // Обновляем точки в базе данных
                 val adjustedNodes = state.nodeList.map { node ->
                     val translationOffset = floatArrayOf(
                         node.translation[0] - locationNode.translation[0],
@@ -443,31 +422,24 @@ class ArPageHandler(
                     node.copy(translation = translationOffset)
                 }
                 
-                // Сохраняем в базе данных
                 adjustedNodes.forEach { node ->
                     nodeViewModel.updateNode(node)
                 }
 
-                // Синхронизируем с сервером
                 adjustedNodes.forEach { node ->
                     viewModel.updateNode(node)
                 }
 
-                // Обновляем nodeList и граф
                 viewModel.handleIntent(ArPageIntent.SetNodeList(adjustedNodes))
                 viewModel.handleIntent(ArPageIntent.SetNodeGraph(com.rawello.mapar.domain.graphHelpers.createGraph(adjustedNodes)))
 
-                // Навигация назад
                 navController.navigateUp()
-                // Ждем 1 секунду перед повторной навигацией
                 delay(1000)
-                // Повторная навигация на тот же экран
                 navController.navigate(
                     Routes.ArScene.string
                         .replace("{buildingId}", state.buildingId.toString())
                         .replace("{buildingName}", state.buildingName)
                 )
-                // --- Сбросить выбранные точки и перестроить маршрут ---
                 viewModel.handleIntent(ArPageIntent.SelectPoint(null, null))
                 viewModel.handleIntent(ArPageIntent.BuildPath)
                 viewModel.handleIntent(ArPageIntent.ShowSnackbar("Местоположение установлено"))
@@ -478,28 +450,21 @@ class ArPageHandler(
     }
 
     fun resetSceneState(state: ArPageState) {
-        Log.d("ArPageHandler", "resetSceneState: clearing all AR/scene state")
-        // Очищаем все childNodes (узлы и связи)
+        Log.d("ArPageHandler", "resetSceneState: очистка всех AR/состояний сцены")
         state.childNodes.clear()
-        // Сброс viewAttachmentManager (если требуется)
         state.viewAttachmentManager = null
-        // Сброс AR-сессии (если требуется)
         state.arSession = null
-        // Сброс списка точек и связей
         state.nodeList = emptyList()
-        // Сброс маршрута и выделений
         state.path = emptyList()
         state.selectedPoint1 = null
         state.selectedPoint2 = null
         state.showBottomSheet = false
         state.showRouteInfoBar = false
-        // Можно добавить сброс других временных/визуальных стейтов по необходимости
-        Log.d("ArPageHandler", "resetSceneState: done")
+        Log.d("ArPageHandler", "resetSceneState: завершено")
     }
 
     fun syncNodeListWithChildNodes(state: ArPageState) {
         val nodes = state.childNodes.mapNotNull { node ->
-            // Только те, что реально добавлены через drawView/drawModelNode
             val id = node.name?.toIntOrNull()
             val title = node.name ?: "Точка"
             val type = when (node) {
@@ -522,6 +487,6 @@ class ArPageHandler(
             } else null
         }
         viewModel.handleIntent(ArPageIntent.SetNodeList(nodes))
-        Log.d("ArPageHandler", "syncNodeListWithChildNodes: синхронизировано ${nodes.size} точек из AR-сцены (только реально добавленные)")
+        Log.d("ArPageHandler", "syncNodeListWithChildNodes: синхронизировано ${nodes.size} точек из AR-сцены")
     }
 }

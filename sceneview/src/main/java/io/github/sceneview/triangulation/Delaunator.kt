@@ -9,18 +9,6 @@ import kotlin.math.sqrt
 private val kEpsilon = 2.0.pow(-52.0)
 private val kEdgeStack = Array(512) { 0 }
 
-/**
- * Fast [Delaunay triangulation](https://en.wikipedia.org/wiki/Delaunay_triangulation) of 2D points
- * implemented in Kotlin.
- *
- * This code was ported from [Delaunator C# project](https://github.com/nol1fe/delaunator-sharp)
- * (C#) which is a port from [Mapbox's Delaunator project](https://github.com/mapbox/delaunator)
- * (JavaScript).
- *
- * Copyright [Delaunator-Kt](https://github.com/ygdrasil-io/Delaunator-Kt)
- *
- * Thanks [ygdrasil-io](https://github.com/ygdrasil-io)
- */
 class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
     var triangles: Array<Int>
@@ -41,10 +29,9 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
     private var hullSize: Int
     private val hull: Array<Int>
 
-
     init {
         if (points.size < 3) {
-            throw IndexOutOfBoundsException("Need at least 3 points")
+            throw IndexOutOfBoundsException("Необходимо как минимум 3 точки")
         }
 
         coordinates = Array(points.size * 2) { .0 }
@@ -92,7 +79,6 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
         var i1 = 0
         var i2 = 0
 
-        // pick a seed point close to the center
         for (i in 0 until n) {
             val d = dist(cx, cy, coordinates[2 * i], coordinates[2 * i + 1])
             if (d < minDist) {
@@ -105,7 +91,6 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
         minDist = Double.POSITIVE_INFINITY
 
-        // find the point closest to the seed
         for (i in 0 until n) {
             if (i == i0) continue
             val d = dist(i0x, i0y, coordinates[2 * i], coordinates[2 * i + 1])
@@ -120,7 +105,6 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
         var minRadius = Double.POSITIVE_INFINITY
 
-        // find the third point which forms the smallest circumcircle with the first two
         for (i in 0 until n) {
             if (i == i0 || i == i1) continue
             val r = circumRadius(i0x, i0y, i1x, i1y, coordinates[2 * i], coordinates[2 * i + 1])
@@ -133,7 +117,7 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
         var i2y = coordinates[2 * i2 + 1]
 
         if (minRadius == Double.POSITIVE_INFINITY) {
-            throw Exception("No Delaunay triangulation exists for this input.")
+            throw Exception("Для данного ввода не существует триангуляции Делоне.")
         }
 
         if (orient(i0x, i0y, i1x, i1y, i2x, i2y)) {
@@ -156,10 +140,8 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
             dist(coordinates[2 * i], coordinates[2 * i + 1], center.x, center.y)
         }
 
-        // sort the points by distance from the seed triangle circumcenter
         quicksort(ids, dists, 0, n - 1)
 
-        // set up the seed triangle as the starting hull
         hullStart = i0
         hullSize = 3
 
@@ -189,22 +171,18 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
             val x = coordinates[2 * i]
             val y = coordinates[2 * i + 1]
 
-            // skip near-duplicate points
             if (k > 0 && abs(x - xp) <= kEpsilon && abs(y - yp) <= kEpsilon) continue
             xp = x
             yp = y
 
-            // skip seed triangle points
             if (i == i0 || i == i1 || i == i2) continue
 
-            // find a visible edge on the convex hull using edge hash
             var start = 0
             for (j in 0 until hashSize) {
                 val key = hashKey(x, y)
                 start = hullHash[(key + j) % hashSize]
                 if (start != -1 && start != hullNext[start]) break
             }
-
 
             start = hullPrev[start]
             var e = start
@@ -228,17 +206,14 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
                 q = hullNext[e]
             }
 
-            if (e == Int.MAX_VALUE) continue // likely a near-duplicate point; skip it
+            if (e == Int.MAX_VALUE) continue
 
-            // add the first triangle from the point
             var t = addTriangle(e, i, hullNext[e], -1, -1, hullTri[e])
 
-            // recursively flip triangles from the point until they satisfy the Delaunay condition
             hullTri[i] = legalize(t + 2)
-            hullTri[e] = t // keep track of boundary triangles on the hull
+            hullTri[e] = t
             hullSize++
 
-            // walk forward through the hull, adding more triangles and flipping recursively
             var next = hullNext[e]
             q = hullNext[next]
 
@@ -253,14 +228,13 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
             ) {
                 t = addTriangle(next, i, q, hullTri[i], -1, hullTri[next])
                 hullTri[i] = legalize(t + 2)
-                hullNext[next] = next // mark as removed
+                hullNext[next] = next
                 hullSize--
                 next = q
 
                 q = hullNext[next]
             }
 
-            // walk backward from the other side, adding more triangles and flipping
             if (e == start) {
                 q = hullPrev[e]
 
@@ -276,7 +250,7 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
                     t = addTriangle(q, i, e, -1, hullTri[e], hullTri[q])
                     legalize(t + 2)
                     hullTri[q] = t
-                    hullNext[e] = e // mark as removed
+                    hullNext[e] = e
                     hullSize--
                     e = q
 
@@ -284,14 +258,12 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
                 }
             }
 
-            // update the hull indices
             hullPrev[i] = e
             hullStart = e
             hullPrev[next] = i
             hullNext[e] = i
             hullNext[i] = next
 
-            // save the two new edges in the hash table
             hullHash[hashKey(x, y)] = i
             hullHash[hashKey(coordinates[2 * e], coordinates[2 * e + 1])] = e
         }
@@ -303,12 +275,10 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
             s = hullNext[s]
         }
 
-        // get rid of temporary arrays
         hullPrev.clear()
         hullNext.clear()
         hullTri.clear()
 
-        //// trim typed triangle mesh arrays
         triangles = triangles.take(trianglesLen).toTypedArray()
         halfEdges = halfEdges.take(trianglesLen).toTypedArray()
     }
@@ -319,7 +289,7 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
     private fun pseudoAngle(dx: Double, dy: Double): Double {
         val p = dx / (abs(dx) + abs(dy))
-        return (if (dy > 0) 3 - p else 1 + p) / 4 // [0..1]
+        return (if (dy > 0) 3 - p else 1 + p) / 4
     }
 
     private fun legalize(index: Int): Int {
@@ -327,29 +297,13 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
         var i = 0
         var ar: Int
 
-        // recursion eliminated with a fixed-size stack
         while (true) {
             val b = halfEdges[a]
 
-            /* if the pair of triangles doesn't satisfy the Delaunay condition
-             * (p1 is inside the circumcircle of [p0, pl, pr]), flip them,
-             * then do the same check/flip recursively for the new pair of triangles
-             *
-             *           pl                    pl
-             *          /||\                  /  \
-             *       al/ || \bl            al/    \a
-             *        /  ||  \              /      \
-             *       /  a||b  \    flip    /___ar___\
-             *     p0\   ||   /p1   =>   p0\---bl---/p1
-             *        \  ||  /              \      /
-             *       ar\ || /br             b\    /br
-             *          \||/                  \  /
-             *           pr                    pr
-             */
             val a0 = a - a % 3
             ar = a0 + (a + 2) % 3
 
-            if (b == -1) { // convex hull edge
+            if (b == -1) {
                 if (i == 0) break
                 a = kEdgeStack[--i]
                 continue
@@ -377,7 +331,6 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
                 val hbl = halfEdges[bl]
 
-                // edge swapped on the other side of the hull (rare); fix the halfedge reference
                 if (hbl == -1) {
                     var e = hullStart
                     do {
@@ -394,7 +347,6 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
                 val br = b0 + (b + 1) % 3
 
-                // don't worry about hitting the cap: it can only happen on extremely degenerate input
                 if (i < kEdgeStack.size) {
                     kEdgeStack[i++] = br
                 }
@@ -568,7 +520,7 @@ class Delaunator<out T : Delaunator.IPoint>(val points: List<T>) {
 
     fun getVoronoiCells(): Sequence<VoronoiCell> {
         return sequence {
-            val seen = HashSet<Int>()  // of point ids
+            val seen = HashSet<Int>()
             for (triangleId in triangles.indices) {
                 val id = triangles[nextHalfedgeIndex(triangleId)]
                 if (!seen.contains(id)) {

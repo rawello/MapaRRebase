@@ -25,13 +25,10 @@ class PathHelper {
         val directionNormalized = Vector3(direction[0], direction[1], direction[2]).normalized()
         val upNormalized = Vector3(up[0], up[1], up[2]).normalized()
 
-        // Вычисляем ось вращения как векторное произведение direction и up
         val axis = Vector3.cross(directionNormalized, upNormalized).normalized()
 
-        // Вычисляем угол между direction и up
         val angle = acos(Vector3.dot(directionNormalized, upNormalized))
 
-        // Создаем кватернион из оси вращения и угла
         val quaternion = Quaternion(
             axis.x * sin(angle / 2),
             axis.y * sin(angle / 2),

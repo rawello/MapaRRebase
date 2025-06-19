@@ -10,7 +10,6 @@ import com.rawello.mapar.data.TokenManager
 object ApiFactory {
     private const val BASE_URL = "http://194.67.84.115:8881/"
 
-    // Провайдер токена (лямбда), по умолчанию возвращает пустую строку
     private var tokenProvider: (() -> String) = { "" }
 
     private fun buildOkHttpClient(): OkHttpClient {
@@ -32,10 +31,9 @@ object ApiFactory {
     var apiService: ApiService = retrofit.create(ApiService::class.java)
         private set
 
-    // Вызывать при смене токена
     fun updateTokenProvider(provider: () -> String) {
         tokenProvider = provider
-        // Пересоздаём retrofit и apiService с новым токеном
+
         retrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(buildOkHttpClient())

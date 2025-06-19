@@ -54,7 +54,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
-            // Сначала связываем TokenManager с ApiFactory
             val tokenManager = TokenManager.getInstance(this@MainActivity)
             tokenManager.bindApiFactoryTokenProvider()
             tokenManager.initialize()

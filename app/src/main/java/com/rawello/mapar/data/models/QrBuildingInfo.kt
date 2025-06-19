@@ -14,6 +14,7 @@ data class QrBuildingInfo(
     fun toJson(): String {
         return """
         {
+            "type": "mapar_location",
             "buildingId": $buildingId,
             "buildingName": "$buildingName",
             "buildingAddress": "$buildingAddress",
@@ -24,15 +25,3 @@ data class QrBuildingInfo(
         """.trimIndent()
     }
 }
-
-// Пример JSON для тестирования:
-/*
-{
-    "buildingId": 4,
-    "buildingName": "Building 1",
-    "buildingAddress": "Address 1",
-    "nodeId": 10,
-    "nodeName": "19",
-    "nodeTitle": "133"
-}
-*/

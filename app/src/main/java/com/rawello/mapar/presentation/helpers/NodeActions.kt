@@ -8,11 +8,6 @@ import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.node.Node
 
 class NodeActions {
-    //TODO: написать обновление точки если ее двигали
-//    private fun updateNodeTranslationOrientation() {
-//
-//    }
-
     fun saveNode(viewModel: NodeViewModel, anchorNode: AnchorNode, type: String, title: String) {
         viewModel.insertNode(
             NodeDb(
@@ -27,7 +22,6 @@ class NodeActions {
         )
     }
 
-    //done: написать обновление ребер
     fun updateNodeNeighbors(insert: Boolean, node: NodeDb, neighborId: Int, viewModel: NodeViewModel, nodeList: List<NodeDb>) {
         try {
             val intListNeighbors = if (node.neighbors.isNotEmpty()) {
@@ -43,7 +37,6 @@ class NodeActions {
                 val newListNeighbors = intListNeighbors + neighborId
                 node.neighbors = newListNeighbors.joinToString(separator = ",") { it.toString() }
 
-                // Добавляем обратную связь
                 nodeList.find { it.id == neighborId }?.let { neighborNode ->
                     val neighborNeighbors = if (neighborNode.neighbors.isNotEmpty()) {
                         neighborNode.neighbors.split(",").map { it.toInt() }

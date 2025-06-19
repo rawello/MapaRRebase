@@ -107,15 +107,14 @@ class NodeDrawers {
             anchorNode.addChildNode(viewNode)
         },
             onError = {
-                Log.d("error draw", it.toString())
+                Log.d("ошибка рисования", it.toString())
                 if (it.message != null)
-                    Log.d("error draw", it.message!!)
+                    Log.d("ошибка рисования", it.message!!)
             })
 
         viewNode.scale = Scale(-1f, 1f, 1f)
         return anchorNode
     }
-
 
     fun drawPathSegment(
         engine: Engine,
@@ -135,8 +134,6 @@ class NodeDrawers {
             val nextPosition = bezierPoints[i + 1]
             val orientation = helper.calculateOrientation(modelPosition, nextPosition)
 
-            viewAttachmentManager?.toString()?.let { //Log.d("tag", it)
-            }
             viewAttachmentManager?.let { vam ->
                 context?.let { ctx ->
                     arSession?.let { session ->
@@ -149,13 +146,13 @@ class NodeDrawers {
                             modelPosition,
                             orientation,
                         ) { viewNode ->
-                            Log.d("tag", viewNode.toString())
+                            Log.d("тег", viewNode.toString())
                         }
                     }
                 }
             }
         }
-        Log.d("updateChildNodes", childNodes.size.toString())
+        Log.d("обновление дочерних узлов", childNodes.size.toString())
         return childNodes
     }
 
@@ -177,8 +174,6 @@ class NodeDrawers {
             val nextPosition = bezierPoints[i + 1]
             val orientation = helper.calculateOrientation(modelPosition, nextPosition)
 
-            viewAttachmentManager?.toString()?.let { //Log.d("tag", it)
-            }
             viewAttachmentManager?.let { vam ->
                 context?.let { ctx ->
                     arSession?.let { session ->
@@ -193,13 +188,13 @@ class NodeDrawers {
                             R.layout.route_link,
                             R.drawable.ic_up_link
                         ) { viewNode ->
-                            Log.d("tag", viewNode.toString())
+                            Log.d("тег", viewNode.toString())
                         }
                     }
                 }
             }
         }
-        Log.d("updateChildNodes", childNodes.size.toString())
+        Log.d("обновление дочерних узлов", childNodes.size.toString())
         return childNodes
     }
 
@@ -221,14 +216,13 @@ class NodeDrawers {
         picId: Int = R.drawable.ic_up_arrow,
         onViewNodeLoaded: (AnchorNode?) -> Unit
     ): AnchorNode {
-        Log.d("tag", "path path path")
+        Log.d("тег", "путь путь путь")
         val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
             if (position != null && quaternion != null) {
                 pose = Pose(position, quaternion)
-                Log.d("AnchorNodePose", "Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+                Log.d("Поза AnchorNode", "Позиция: ${position.joinToString(", ")}, Кватернион: ${quaternion.joinToString(", ")}")
             }
         }
-
 
         val viewNode = ViewNode(engine, modelLoader, viewAttachmentManager).apply {
             isEditable = false
@@ -237,13 +231,13 @@ class NodeDrawers {
                 val icon = view.findViewById<ImageView>(R.id.imageView)
                 icon.setImageDrawable(ContextCompat.getDrawable(context, picId))
 
-                this.name = "arrow"
-                anchorNode.name = "arrow"
+                this.name = "стрелка"
+                anchorNode.name = "стрелка"
             },
                 onError = {
-                    Log.d("error draw", it.toString())
+                    Log.d("ошибка рисования", it.toString())
                     if (it.message != null)
-                        Log.d("error draw", it.message!!)
+                        Log.d("ошибка рисования", it.message!!)
                     onViewNodeLoaded(null)
                 })
             this.scale = Scale(1.5f, 1.5f, 1.5f)
@@ -267,7 +261,7 @@ class NodeDrawers {
         val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
             if (position != null && quaternion != null) {
                 pose = Pose(position, quaternion)
-                Log.d("AnchorNodePose", "[LINK] Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+                Log.d("Поза AnchorNode", "[СВЯЗЬ] Позиция: ${position.joinToString(", ")}, Кватернион: ${quaternion.joinToString(", ")}")
             }
         }
 
@@ -275,13 +269,13 @@ class NodeDrawers {
             isEditable = false
 
             loadView(context, R.layout.route_link, onLoaded = { _, view ->
-                this.name = "link"
-                anchorNode.name = "link"
+                this.name = "связь"
+                anchorNode.name = "связь"
             },
                 onError = {
-                    Log.d("error draw", it.toString())
+                    Log.d("ошибка рисования", it.toString())
                     if (it.message != null)
-                        Log.d("error draw", it.message!!)
+                        Log.d("ошибка рисования", it.message!!)
                     onViewNodeLoaded(null)
                 })
             this.scale = Scale(1.5f, 1.5f, 1.5f)
@@ -325,8 +319,8 @@ class NodeDrawers {
                                 orientation,
                                 linkName
                             ) {}
-                        }catch (e: Exception){
-                            e.message?.let { Log.e("ex", it) }
+                        } catch (e: Exception) {
+                            e.message?.let { Log.e("исключение", it) }
                         }
                     }
                 }
@@ -349,7 +343,7 @@ class NodeDrawers {
         val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
             if (position != null && quaternion != null) {
                 pose = Pose(position, quaternion)
-                Log.d("AnchorNodePose", "Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+                Log.d("Поза AnchorNode", "Позиция: ${position.joinToString(", ")}, Кватернион: ${quaternion.joinToString(", ")}")
             }
         }
 
@@ -364,24 +358,20 @@ class NodeDrawers {
                 anchorNode.name = linkName
                 this.scale = Scale(1.5f, 1.5f, 1.5f)
 
-                Log.e("tag", "linked")
+                Log.e("тег", "связано")
                 anchorNode.addChildNode(this)
             },
                 onError = {
                     if (it.message != null)
-                        Log.e("error draw", it.message!!)
+                        Log.e("ошибка рисования", it.message!!)
                     onViewNodeLoaded(null)
                 })
 
-            Log.e("tag", "linked")
+            Log.e("тег", "связано")
             return anchorNode
         }
     }
 
-    /**
-     * Рисует прямую линию между двумя точками (NodeDb) с уникальным именем edge_{id1}_{id2}
-     * Линия будет двигаться за точками при их перемещении (если вызывать этот метод при каждом рендере)
-     */
     fun drawConnectionLineBetweenNodes(
         engine: Engine,
         modelLoader: ModelLoader,
@@ -414,7 +404,7 @@ class NodeDrawers {
             edgeName = edgeName,
             length = length
         ) {
-            Log.d("NodeDrawers", "[DEBUG] drawConnectionViewNode onViewNodeLoaded: $edgeName, anchorNode=$it")
+            Log.d("NodeDrawers", "[ОТЛАДКА] drawConnectionViewNode onViewNodeLoaded: $edgeName, anchorNode=$it")
         }
         return anchorNode
     }
@@ -434,7 +424,7 @@ class NodeDrawers {
         val anchorNode = AnchorNode(engine = engine, anchor = anchor).apply {
             if (position != null && quaternion != null) {
                 pose = Pose(position, quaternion)
-                Log.d("AnchorNodePose", "[CONNECTION] Position: ${position.joinToString(", ")}, Quaternion: ${quaternion.joinToString(", ")}")
+                Log.d("Поза AnchorNode", "[СОЕДИНЕНИЕ] Позиция: ${position.joinToString(", ")}, Кватернион: ${quaternion.joinToString(", ")}")
             }
             name = edgeName
         }
@@ -448,9 +438,9 @@ class NodeDrawers {
                 anchorNode.addChildNode(this)
                 onViewNodeLoaded(anchorNode)
             }, onError = {
-                Log.d("error draw", it.toString())
+                Log.d("ошибка рисования", it.toString())
                 if (it.message != null)
-                    Log.d("error draw", it.message!!)
+                    Log.d("ошибка рисования", it.message!!)
                 onViewNodeLoaded(null)
             })
         }

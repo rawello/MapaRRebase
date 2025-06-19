@@ -187,23 +187,23 @@ fun ArPage(
 
     LaunchedEffect(buildingId, editMode) {
         try {
-            Log.d("ArPage", "[UNIFIED] Starting initialization for building $buildingId, editMode=$editMode")
+            Log.d("ArPage", "[UNIFIED] Начало инициализации для здания $buildingId, editMode=$editMode")
             arPageViewModel.handleIntent(ArPageIntent.SetLoading(true))
             arPageViewModel.handleIntent(ArPageIntent.SetBuildingId(buildingId))
             arPageViewModel.handleIntent(ArPageIntent.SetBuildingName(buildingName))
 
-            Log.d("ArPage", "[UNIFIED] Loading nodes for building $buildingId")
+            Log.d("ArPage", "[UNIFIED] Загрузка точек для здания $buildingId")
             val nodes = try {
                 nodeViewModel.getNodesForBuilding(buildingId.toLong())
             } catch (e: Exception) {
-                Log.e("ArPage", "[UNIFIED] Error loading nodes from local DB", e)
+                Log.e("ArPage", "[UNIFIED] Ошибка загрузки точек из локальной БД", e)
                 emptyList()
             }
-            Log.d("ArPage", "[UNIFIED] Loaded ${nodes.size} nodes")
+            Log.d("ArPage", "[UNIFIED] Загружено ${nodes.size} точек")
 
             if (nodes.isNotEmpty()) {
                 nodes.forEach { node ->
-                    Log.d("ArPage", "[UNIFIED] Node ${node.id}: type=${node.type}, title=${node.title}, translation=${node.translation.contentToString()}")
+                    Log.d("ArPage", "[UNIFIED] Точка ${node.id}: type=${node.type}, title=${node.title}, translation=${node.translation.contentToString()}")
                 }
                 arPageViewModel.handleIntent(ArPageIntent.SetNodeList(nodes))
                 delay(1000)
@@ -212,23 +212,27 @@ fun ArPage(
                         val sourceNode = nodes.find { it.type == "view" }
                         val destNode = nodes.find { it.id == destId }
                         if (sourceNode != null && destNode != null) {
-                            Log.d("ArPage", "[UNIFIED] Building path from ${sourceNode.id} to $destId")
+                            Log.d("ArPage", "[UNIFIED] Построение маршрута от ${sourceNode.id} до $destId")
                             arPageViewModel.handleIntent(ArPageIntent.SelectPoint(sourceNode.id.toString(), destId.toString()))
                             arPageViewModel.handleIntent(ArPageIntent.SetButtonText(sourceNode.title, destNode.title))
                             arPageViewModel.handleIntent(ArPageIntent.BuildPath)
                         } else {
-                            Log.e("ArPage", "[UNIFIED] Could not find source or destination node for automatic path building")
+                            Log.e("ArPage", "[UNIFIED] Не удалось найти начальную или конечную точку для автоматического построения маршрута")
                         }
                     }
                 }
             } else {
-                Log.e("ArPage", "[UNIFIED] No nodes loaded for building $buildingId")
+                Log.e("ArPage", "[UNIFIED] Нет загруженных точек для здания $buildingId")
             }
         } catch (e: Exception) {
-            Log.e("ArPage", "[UNIFIED] Error loading nodes", e)
+            Log.e("ArPage", "[UNIFIED] Ошибка загрузки точек", e)
             snackbarHostState.showSnackbar("Ошибка при загрузке точек: ${e.message}")
         } finally {
             arPageViewModel.handleIntent(ArPageIntent.SetLoading(false))
+            handler.initializeNodes(state, isEditMode = editMode, isQrMode = state.isQrMode)
+            if (state.nodeList.isEmpty()) {
+                snackbarHostState.showSnackbar("Нет точек для отображения (возможно, нет локальных данных)")
+            }
         }
     }
 
@@ -300,13 +304,11 @@ fun ArPage(
     var hasUnsavedChanges by remember { mutableStateOf(false) }
     var showExitEditModeDialog by remember { mutableStateOf(false) }
 
-    // --- EditMode: выделение и работа с точками/связями ---
     var selectedNodeId by remember { mutableStateOf<Int?>(null) }
     var selectedEdge by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkTargetId by remember { mutableStateOf<Int?>(null) }
 
-    // Добавляем обработку выхода из режима редактирования
     fun tryExitEditMode() {
         if (hasUnsavedChanges) {
             showExitEditModeDialog = true
@@ -347,7 +349,6 @@ fun ArPage(
         topBar = {
             if (buildingName.isNotEmpty()) {
                 TopAppBar(
-                    //modifier = Modifier.align(Alignment.TopCenter),
                     title = {
                         val displayName = state.buildingName.replace("_", " ").trim()
                         Box(
@@ -386,7 +387,6 @@ fun ArPage(
                     CircularProgressIndicator()
                 }
             } else {
-                // --- QR режим: крупные кнопки управления аккаунтом и режимом редактирования ---
                 if (state.isQrMode) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -513,7 +513,6 @@ fun ArPage(
                                     }
                                 }
                             }
-                            // Кнопка "Выйти в режим просмотра" если мы в режиме редактирования и в QR-режиме
                             if (state.isEditMode && state.isQrMode) {
                                 ElevatedButton(
                                     onClick = {
@@ -710,7 +709,6 @@ fun ArPage(
                                 errorMessage = loginErrorMessage
                             )
                         }
-                        // --- BottomBar как в AR режиме ---
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.BottomCenter
@@ -749,7 +747,6 @@ fun ArPage(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
-                                    // AR кнопка
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -784,7 +781,6 @@ fun ArPage(
                                         }
                                     }
                                     Spacer(modifier = Modifier.width(16.dp))
-                                    // QR кнопка
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -884,7 +880,6 @@ fun ArPage(
                             )
                         }
 
-                        // --- Локальные состояния для создания и размещения точки ---
                         val arNodes = state.childNodes.mapNotNull { node ->
                             val id = node.name?.toIntOrNull()
                             val title = node.name ?: "Точка"
@@ -905,7 +900,6 @@ fun ArPage(
                                 if (state.nodeList.isNotEmpty()) state.nodeList else arNodes
                             )
                         }
-                        // Формируем связи по neighbors (двусторонние, без дубликатов)
                         var localEdges by remember(localNodeList) {
                             mutableStateOf(
                                 buildList {
@@ -932,13 +926,10 @@ fun ArPage(
                         var nodeTypeDropdownExpanded by remember { mutableStateOf(false) }
                         val nodeTypes = listOf("view" to "Точка с названием", "linked" to "Связная точка")
 
-                        // FAB для создания точки
                         IconButton(onClick = {
-                            // При открытии диалога, если newNodeType пустой, ставим view
                             if (newNodeType.isBlank()) newNodeType = "view"
                             newNodeTitle = ""
                             showNewNodeDialog = true
-                            Log.d("AR_NODE_CREATE", "DIALOG OPEN: newNodeType=$newNodeType")
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "Добавить точку")
                         }
@@ -947,13 +938,8 @@ fun ArPage(
                             AlertDialog(
                                 onDismissRequest = {
                                     showNewNodeDialog = false
-                                    // Сброс только при закрытии
                                     newNodeType = "view"
                                     newNodeTitle = ""
-                                    Log.d(
-                                        "AR_NODE_CREATE",
-                                        "DIALOG DISMISS: newNodeType сброшен к view"
-                                    )
                                 },
                                 title = { Text("Создать новую точку") },
                                 text = {
@@ -996,10 +982,6 @@ fun ArPage(
                                                         onClick = {
                                                             newNodeType = type
                                                             nodeTypeDropdownExpanded = false
-                                                            Log.d(
-                                                                "AR_NODE_CREATE",
-                                                                "TYPE SELECTED: newNodeType=$newNodeType"
-                                                            )
                                                         }
                                                     )
                                                 }
@@ -1014,12 +996,7 @@ fun ArPage(
                                 },
                                 confirmButton = {
                                     Button(onClick = {
-                                        Log.d(
-                                            "AR_NODE_CREATE",
-                                            "CONFIRM DIALOG: newNodeType=$newNodeType, pendingNodeType(before)=$pendingNodeType"
-                                        )
                                         val newId = (localNodeList.maxOfOrNull { it.id } ?: 0) + 1
-                                        Log.d("AR_NODE_CREATE", "CONFIRM: newId=$newId, type=$newNodeType, title=$newNodeTitle")
                                         nodeToPlaceId = newId
                                         pendingNodeType = newNodeType
                                         pendingNodeTitle = newNodeTitle
@@ -1037,18 +1014,12 @@ fun ArPage(
                                         showNewNodeDialog = false
                                         newNodeType = "view"
                                         newNodeTitle = ""
-                                        Log.d(
-                                            "AR_NODE_CREATE",
-                                            "DIALOG CANCEL: newNodeType сброшен к view"
-                                        )
                                     }) { Text("Отмена") }
                                 }
                             )
                         }
 
-                        // --- Диалог редактирования названия точки ---
                         if (editNodeTitleDialogId != null) {
-                            // Берём только из актуального списка (state.nodeList если localNodeList пустой)
                             val nodeSource = if (localNodeList.isNotEmpty()) localNodeList else state.nodeList
                             val node = nodeSource.find { it.id == editNodeTitleDialogId }
                             var editTitle by remember(editNodeTitleDialogId, node?.title) { mutableStateOf(node?.title ?: "") }
@@ -1080,9 +1051,7 @@ fun ArPage(
                             )
                         }
 
-                        // --- Размещение точки на сцене ---
                         val onPlaceNode: (FloatArray, FloatArray) -> Unit = { position, quaternion ->
-                            Log.d("AR_NODE_CREATE", "onPlaceNode called: readyToPlaceNode=$readyToPlaceNode, nodeToPlaceId=$nodeToPlaceId, pendingNodeType=$pendingNodeType, pendingNodeTitle=$pendingNodeTitle")
                             if (readyToPlaceNode && nodeToPlaceId != null && pendingNodeType != null && pendingNodeTitle != null) {
                                 val newNode = NodeDb(
                                     id = nodeToPlaceId!!,
@@ -1094,21 +1063,16 @@ fun ArPage(
                                     title = pendingNodeTitle!!,
                                     neighbors = ""
                                 )
-                                Log.d("AR_NODE_CREATE", "Добавлена точка: $newNode")
-                                // Обновляем nodeList для UI
                                 arPageViewModel.handleIntent(ArPageIntent.SetNodeList(state.nodeList + newNode))
-                                // Обновляем AR-сцену через handler (childNodes обновятся внутри)
                                 handler.initializeNodes(state.copy(nodeList = state.nodeList + newNode), isEditMode = state.isEditMode, isQrMode = state.isQrMode)
                                 readyToPlaceNode = false
                                 nodeToPlaceId = null
                                 pendingNodeType = null
                                 pendingNodeTitle = null
                                 localHasUnsavedChanges = true
-                                Log.d("AR_NODE_CREATE", "onPlaceNode завершён, readyToPlaceNode сброшен и интент отправлен + initializeNodes вызван")
                             }
                         }
 
-                        // --- Перемещение точки на сцене ---
                         val onMoveNode: (Int, FloatArray, FloatArray) -> Unit =
                             { nodeId, position, quaternion ->
                                 localNodeList = localNodeList.map {
@@ -1129,9 +1093,7 @@ fun ArPage(
                             cameraNode = cameraNode,
                             onGestureListener = rememberOnGestureListener(
                                 onSingleTapConfirmed = { event, tappedNode ->
-                                    Log.d("AR_NODE_CREATE", "onSingleTapConfirmed: readyToPlaceNode=$readyToPlaceNode, nodeToPlaceId=$nodeToPlaceId")
                                     if (readyToPlaceNode && nodeToPlaceId != null) {
-                                        // Используем актуальный frame
                                         val hitResult = lastArFrame?.hitTest(event.x, event.y)
                                             ?.firstOrNull { it.trackable != null }
                                         if (hitResult != null) {
@@ -1144,10 +1106,9 @@ fun ArPage(
                                                 pose.qz(),
                                                 pose.qw()
                                             )
-                                            Log.d("AR_NODE_CREATE", "onSingleTapConfirmed: hitResult найден, вызываем onPlaceNode")
                                             onPlaceNode(position, quaternion)
                                         } else {
-                                            Log.d("AR_NODE_CREATE", "onSingleTapConfirmed: hitResult == null")
+
                                         }
                                     } else if (state.isEditMode) {
                                         val tappedId = tappedNode?.name?.toIntOrNull()
@@ -1202,7 +1163,6 @@ fun ArPage(
                                     )
                                 },
                                 sheetState = rememberModalBottomSheetState(),
-                                //windowInsets = WindowInsets(0)
                             ) {
                                 NodesListContent(
                                     nodes = state.nodeList,
@@ -1227,12 +1187,10 @@ fun ArPage(
                                             )
                                         }
                                     },
-                                    //modifier = Modifier.navigationBarsPadding()
                                 )
                             }
                         }
 
-                        // --- Плавающий seamless BottomBar + BottomSheet как единый элемент ---
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.BottomCenter
@@ -1241,7 +1199,7 @@ fun ArPage(
                             val bottomBarHeight = 64.dp
                             val dragHandlerHeight = 16.dp
                             val minSheetHeight =
-                                dragHandlerHeight + 32.dp // увеличиваем минимальную высоту card
+                                dragHandlerHeight + 32.dp
                             val maxSheetHeight = 160.dp
                             val sheetHeight = remember { mutableStateOf(minSheetHeight) }
                             val isCollapsed = sheetHeight.value <= minSheetHeight + 8.dp
@@ -1254,7 +1212,7 @@ fun ArPage(
                                 topEnd = 32.dp,
                                 bottomStart = 32.dp,
                                 bottomEnd = 32.dp
-                            ) // добавлено скругление снизу
+                            )
                             val indicatorColor =
                                 if (state.isQrMode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             val indicatorWidth = barWidth / 2
@@ -1263,16 +1221,14 @@ fun ArPage(
                                 label = "indicatorOffset"
                             )
 
-                            // Высота только для sheet, bar всегда фиксирован
                             val totalHeight = animatedSheetHeight + bottomBarHeight - 16.dp
 
-                            // Плавающая область: Card с отступом от нижней границы
                             Card(
                                 modifier = Modifier
                                     .width(barWidth)
                                     .height(totalHeight)
                                     .align(Alignment.BottomCenter)
-                                    .offset(y = (-32).dp) // Плавающий эффект: поднимаем на 32dp над низом экрана
+                                    .offset(y = (-32).dp)
                                     .zIndex(1f),
                                 shape = sheetShape,
                                 elevation = CardDefaults.cardElevation(if (!isCollapsed) 24.dp else 8.dp),
@@ -1283,11 +1239,10 @@ fun ArPage(
                                 )
                             ) {
                                 Box(modifier = Modifier.fillMaxSize()) {
-                                    // Drag handler и sheet-контент
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(bottom = bottomBarHeight), // Оставляем место для кнопок
+                                            .padding(bottom = bottomBarHeight),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Box(
@@ -1378,13 +1333,12 @@ fun ArPage(
                                             }
                                         }
                                     }
-                                    // --- BottomBar часть: всегда закреплена внизу Card ---
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(bottomBarHeight)
                                             .align(Alignment.BottomCenter)
-                                            .padding(bottom = 8.dp), // добавлен отступ снизу
+                                            .padding(bottom = 8.dp),
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -1403,7 +1357,6 @@ fun ArPage(
                                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(
                                                     alpha = 0.10f
                                                 )
-                                            // AR кнопка
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -1439,7 +1392,6 @@ fun ArPage(
                                                 }
                                             }
                                             Spacer(modifier = Modifier.width(16.dp))
-                                            // QR кнопка
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -1518,22 +1470,32 @@ fun ArPage(
         }
 
         if (showNewBuildingDialog) {
+            var newBuildingAddress by remember { mutableStateOf("") }
             AlertDialog(
                 onDismissRequest = { showNewBuildingDialog = false },
-                title = { Text("Введите название нового здания") },
+                title = { Text("Введите данные нового здания") },
                 text = {
-                    TextField(
-                        value = newBuildingName,
-                        onValueChange = { newBuildingName = it },
-                        label = { Text("Название здания") }
-                    )
+                    Column {
+                        TextField(
+                            value = newBuildingName,
+                            onValueChange = { newBuildingName = it },
+                            label = { Text("Название здания") }
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        TextField(
+                            value = newBuildingAddress,
+                            onValueChange = { newBuildingAddress = it },
+                            label = { Text("Адрес здания") }
+                        )
+                    }
                 },
                 confirmButton = {
                     Button(
                         onClick = {
-                            arPageViewModel.createBuilding(newBuildingName)
+                            arPageViewModel.createBuilding(newBuildingName, newBuildingAddress)
                             showNewBuildingDialog = false
-                        }
+                        },
+                        enabled = newBuildingName.isNotBlank() && newBuildingAddress.isNotBlank()
                     ) {
                         Text("Создать")
                     }
@@ -1578,8 +1540,6 @@ fun ArPage(
                     arPageViewModel.handleIntent(ArPageIntent.SetDistanceToTurn(distanceToTurn))
                     arPageViewModel.handleIntent(ArPageIntent.SetTurnDirection(turnDirection))
 
-                    // RouteInfoBar теперь не скрывается при distanceToTurn < 2.0f,
-                    // а только при достижении конца маршрута (см. showDestinationReachedBar)
                     if (!state.showRouteInfoBar) {
                         arPageViewModel.handleIntent(ArPageIntent.SetShowRouteInfoBar(true))
                     }
@@ -1587,9 +1547,6 @@ fun ArPage(
             }
         }
 
-        // RouteInfoBar показываем только если:
-        // 1. state.showRouteInfoBar == true
-        // 2. (есть маршрут и path не пустой) ИЛИ (turnDirection == "Вы дошли до места назначения" И wasRouteActive)
         val showRouteInfoBar = state.showRouteInfoBar && !state.isQrMode && (
                 (state.path.isNotEmpty() && state.turnDirection != "Вы дошли до места назначения") ||
                         (state.turnDirection == "Вы дошли до места назначения" && state.wasRouteActive)
@@ -1612,13 +1569,11 @@ fun ArPage(
         }
 
         if (state.isEditMode && !state.isQrMode) {
-            // --- Локальное состояние для точек, связей и selection ---
             var localNodeList by remember {
                 mutableStateOf(
                     state.nodeList
                 )
             }
-            // Формируем связи по neighbors (двусторонние, без дубликатов)
             var localEdges by remember(localNodeList) {
                 mutableStateOf(
                     buildList {
@@ -1643,16 +1598,13 @@ fun ArPage(
             var showNodeMenu by remember { mutableStateOf(false) }
             var showEdgeMenu by remember { mutableStateOf(false) }
 
-            // --- Синхронизация localNodeList с state.nodeList при изменении ---
             LaunchedEffect(state.nodeList) {
                 if (!localHasUnsavedChanges) {
                     localNodeList = state.nodeList
                 }
             }
 
-            // --- Кнопки управления и FAB/меню ---
             Box(modifier = Modifier.fillMaxSize()) {
-                // Кнопки управления (перенесены выше, чтобы не мешать drag handler)
                 AnimatedVisibility(
                     visible = true,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 140.dp)
@@ -1676,21 +1628,18 @@ fun ArPage(
                                 Icon(Icons.Default.Add, contentDescription = "Добавить точку")
                             }
                             IconButton(onClick = {
-                                // Новый режим связывания
                                 linkMode = !linkMode
                                 linkSourceId = null
                                 localSelectedNodeId = null
                             }) {
                                 Icon(Icons.Default.Share, contentDescription = if (linkMode) "Выйти из режима связывания" else "Связать точки")
                             }
-                            // --- Кнопка редактирования названия ---
                             IconButton(onClick = {
                                 if (localSelectedNodeId != null) editNodeTitleDialogId =
                                     localSelectedNodeId
                             }, enabled = localSelectedNodeId != null) {
                                 Icon(Icons.Default.Edit, contentDescription = "Редактировать точку")
                             }
-                            // --- Кнопка генерации QR-кода ---
                             IconButton(onClick = { showQrDialog = true }) {
                                 Icon(Icons.Default.Place, contentDescription = "QR-код точки")
                             }
@@ -1754,12 +1703,11 @@ fun ArPage(
                         }
                     }
                 }
-                // --- Кнопка "Список точек/связей" (FAB) ---
                 FloatingActionButton(
                     onClick = { showNodeMenu = true },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = 120.dp, end = 0.dp), // было 16.dp, теперь 36.dp (сдвиг на 20px правее)
+                        .padding(bottom = 120.dp, end = 0.dp),
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
@@ -1768,9 +1716,7 @@ fun ArPage(
                         tint = Color.White
                     )
                 }
-                // --- Кастомное меню выбора точки и связи ---
                 if (showNodeMenu) {
-                    // Синхронизация списка точек с nodeList при каждом открытии меню
                     LaunchedEffect(showNodeMenu, state.nodeList) {
                         if (showNodeMenu && state.nodeList.isNotEmpty()) {
                             localNodeList = state.nodeList
@@ -1799,7 +1745,6 @@ fun ArPage(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Divider()
-                                // Фильтруем только реальные точки (без линий и стрелок)
                                 val points = localNodeList.filter { it.type != "arrow" && it.type != "line" && it.type != "route" }
                                 val scrollState = rememberLazyListState()
                                 LazyColumn(
@@ -1921,7 +1866,6 @@ fun ArPage(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Divider()
-                                // Только связи между реальными точками
                                 val pointIds = localNodeList.filter { it.type != "arrow" && it.type != "line" && it.type != "route" }.map { it.id }
                                 val edges = localEdges.filter { edge ->
                                     pointIds.contains(edge.first) && pointIds.contains(edge.second)
@@ -1989,7 +1933,6 @@ fun ArPage(
                         }
                     }
                 }
-                // --- Режим связывания ---
                 if (linkMode) {
                     Box(
                         modifier = Modifier
@@ -1997,7 +1940,6 @@ fun ArPage(
                             .background(Color.Black.copy(alpha = 0.07f))
                             .zIndex(20f)
                     ) {
-                        // Компактная карточка-подсказка, прижата к левому краю и ниже TopAppBar
                         Card(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -2030,7 +1972,6 @@ fun ArPage(
                                 )
                             }
                         }
-                        // Список точек для связывания — тоже прижат к левому краю и ниже подсказки
                         Card(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -2120,7 +2061,6 @@ fun ArPage(
                     }
                 }
             }
-            // --- Диалог связывания ---
             if (showLocalLinkDialog && localSelectedNodeId != null) {
                 AlertDialog(
                     onDismissRequest = { showLocalLinkDialog = false },
@@ -2149,7 +2089,6 @@ fun ArPage(
                     confirmButton = {
                         Button(onClick = {
                             if (localLinkTargetId != null) {
-                                // Добавляем связь (обновляем neighbors у обеих точек)
                                 val id1 = localSelectedNodeId!!
                                 val id2 = localLinkTargetId!!
                                 localNodeList = localNodeList.map { n ->
@@ -2190,15 +2129,13 @@ fun ArPage(
                     }
                 )
             }
-            // --- Диалог добавления точки ---
             if (showNewNodeDialog) {
-                // Локализуем переменные для выпадающего меню внутри диалога
                 var nodeTypeDropdownExpanded by remember(showNewNodeDialog) { mutableStateOf(false) }
                 val nodeTypes = listOf("view" to "Точка с названием", "linked" to "Связная точка")
                 AlertDialog(
                     onDismissRequest = {
                         showNewNodeDialog = false
-                        nodeTypeDropdownExpanded = false // сброс состояния меню
+                        nodeTypeDropdownExpanded = false
                     },
                     title = { Text("Создать новую точку") },
                     text = {
@@ -2254,9 +2191,7 @@ fun ArPage(
                     confirmButton = {
                         Button(
                             onClick = {
-                                // Генерируем новый id
                                 val newId = (localNodeList.maxOfOrNull { it.id } ?: 0) + 1
-                                Log.d("AR_NODE_CREATE", "CONFIRM: newId=$newId, type=$newNodeType, title=$newNodeTitle")
                                 nodeToPlaceId = newId
                                 pendingNodeType = newNodeType
                                 pendingNodeTitle = newNodeTitle
@@ -2284,7 +2219,6 @@ fun ArPage(
                 )
             }
 
-            // --- Диалог генерации QR-кода для точки ---
             if (showQrDialog) {
                 var dropdownExpanded by remember { mutableStateOf(false) }
                 val viewNodes = localNodeList.filter { it.type == "view" }
@@ -2362,7 +2296,6 @@ fun ArPage(
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
-                                // QR-код
                                 AndroidView(
                                     factory = { ctx ->
                                         ImageView(ctx).apply { setImageBitmap(qrBitmap) }
@@ -2428,7 +2361,6 @@ fun ArPage(
         }
     }
 
-    // --- Загрузка и установка всех точек при входе в режим редактирования ---
     LaunchedEffect(state.isEditMode) {
         if (state.isEditMode) {
             try {
@@ -2441,7 +2373,6 @@ fun ArPage(
                     emptyList()
                 }
                 Log.d("ArPage", "[EDITMODE] Загружено ${nodes.size} точек для редактирования")
-                // Устанавливаем все точки (view, linked, связи) видимыми
                 arPageViewModel.handleIntent(ArPageIntent.SetNodeList(nodes))
             } catch (e: Exception) {
                 Log.e("ArPage", "[EDITMODE] Ошибка загрузки точек", e)
@@ -2452,15 +2383,13 @@ fun ArPage(
         }
     }
 
-    // Сброс AR-сцены и всех стейтов при входе в режим редактирования или при переходе между режимами
     LaunchedEffect(state.isEditMode, state.isQrMode) {
         if (state.isEditMode || state.isQrMode) {
-            Log.d("ArPage", "Resetting AR scene state: isEditMode=${state.isEditMode}, isQrMode=${state.isQrMode}")
+            Log.d("ArPage", "Сброс состояния AR сцены: isEditMode=${state.isEditMode}, isQrMode=${state.isQrMode}")
             handler.resetSceneState(state)
         }
     }
 
-    // Обновляем состояние несохраненных изменений при любых изменениях в режиме редактирования
     LaunchedEffect(state.isEditMode, arPageViewModel.hasUnsavedChanges) {
         hasUnsavedChanges = arPageViewModel.hasUnsavedChanges
         if (!state.isEditMode) {
@@ -2469,7 +2398,6 @@ fun ArPage(
         }
     }
 
-    // Диалог подтверждения выхода из режима редактирования
     if (showExitEditModeDialog) {
         AlertDialog(
             onDismissRequest = { showExitEditModeDialog = false },
@@ -2501,7 +2429,6 @@ fun ArPage(
         )
     }
 
-    // Обработка выхода из приложения с несохраненными изменениями
     BackHandler(enabled = state.isEditMode && hasUnsavedChanges) {
         tryExitEditMode()
     }
@@ -2658,7 +2585,6 @@ fun QrCodeDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // QR код
                 Surface(
                     modifier = Modifier
                         .size(256.dp)
@@ -2676,7 +2602,6 @@ fun QrCodeDialog(
                     )
                 }
 
-                // Информация о здании
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -2729,7 +2654,7 @@ fun QrCodeDialog(
                     }
 
                     FilledTonalButton(
-                        onClick = { /* Поделиться */ },
+                        onClick = { },
                         modifier = Modifier.weight(1f).padding(start = 8.dp)
                     ) {
                         Row(

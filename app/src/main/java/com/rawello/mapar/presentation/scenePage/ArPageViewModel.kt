@@ -48,7 +48,6 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     private val nodeActions = NodeActions()
     private var routeInfoHideJob: Job? = null
 
-    // --- EditMode: отслеживание несохранённых изменений ---
     var hasUnsavedChanges = false
         private set
 
@@ -111,7 +110,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                 is ArPageIntent.ShowQrDialog -> showQrDialog(intent.show)
                 is ArPageIntent.SetQrBitmap -> setQrBitmap(intent.bitmap)
                 is ArPageIntent.SetShowRouteInfoBar -> setShowRouteInfoBar(intent.show)
-                else -> {} // Handle other intents
+                else -> {}
             }
         }
     }
@@ -187,17 +186,15 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     private fun buildPath() {
         helper.clearOldArrows(_state.value.childNodes)
 
-        // Логирование для диагностики
         Log.d("buildPath_debug", "selectedPoint1: ${_state.value.selectedPoint1}, selectedPoint2: ${_state.value.selectedPoint2}")
         val graphKeys = _state.value.nodeGraph.getGraph().keys.map { it.id }
-        Log.d("buildPath_debug", "graph keys: $graphKeys")
+        Log.d("buildPath_debug", "ключи графа: $graphKeys")
 
-        // Новый поиск по title, если selectedPoint1/2 не являются id
         val nodeList = _state.value.nodeList
         val startNodeId = nodeList.find { it.title == _state.value.selectedPoint2 }?.id?.toString() ?: _state.value.selectedPoint2
         val endNodeId = nodeList.find { it.title == _state.value.selectedPoint1 }?.id?.toString() ?: _state.value.selectedPoint1
 
-        Log.d("buildPath_debug", "resolved startNodeId: $startNodeId, endNodeId: $endNodeId")
+        Log.d("buildPath_debug", "определённый startNodeId: $startNodeId, endNodeId: $endNodeId")
 
         if (startNodeId != null && endNodeId != null && startNodeId != endNodeId) {
             val startNode = _state.value.nodeGraph.getGraph().keys.find { it.id == endNodeId }
@@ -208,7 +205,6 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
             if (startNode != null && endNode != null) {
                 val path = Dijkstra().dijkstra(_state.value.nodeGraph.getGraph(), endNode, startNode)
 
-                // Ставим флаг, что маршрут был активен
                 _state.value = _state.value.copy(wasRouteActive = path.isNotEmpty())
 
                 if (path.size >= 2) {
@@ -227,7 +223,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                     Log.d("size1", _state.value.childNodes.size.toString())
 
                     _state.value = _state.value.copy(path = path)
-                    Log.d("path", "Path updated: ${path.size} nodes")
+                    Log.d("path", "Маршрут обновлён: ${path.size} точек")
                 } else if (path.isNotEmpty()) {
                     Log.d("size", state.value.childNodes.size.toString())
                     Log.d("size1", _state.value.childNodes.size.toString())
@@ -245,7 +241,7 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                     Log.d("size1",_state.value.childNodes.size.toString())
 
                     _state.value = _state.value.copy(path = path)
-                    Log.d("path", "Path updated: ${path.size} nodes")
+                    Log.d("path", "Маршрут обновлён: ${path.size} точек")
                 } else {
                     handleIntent(ArPageIntent.ShowSnackbar("Не удалось построить маршрут"))
                 }
@@ -321,7 +317,6 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     }
 
     private fun redrawLinks() {
-        // Используем актуальный способ: полная перерисовка через handler.initializeNodes
         val state = _state.value
         if (state.engine != null && state.modelLoader != null && state.arSession != null && state.viewAttachmentManager != null && state.context != null) {
             val handler = ArPageHandler(
@@ -389,7 +384,18 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                 val createdBuilding = ApiFactory.apiService.createBuilding(building)
                 _state.value = _state.value.copy(buildingId = createdBuilding.id, buildingName = createdBuilding.name)
             } catch (e: Exception) {
-                // Обработка ошибок
+                handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания: ${e.message}"))
+            }
+        }
+    }
+
+    fun createBuilding(buildingName: String, buildingAddress: String) {
+        viewModelScope.launch {
+            try {
+                val building = Building(name = buildingName, address = buildingAddress)
+                val createdBuilding = ApiFactory.apiService.createBuilding(building)
+                _state.value = _state.value.copy(buildingId = createdBuilding.id, buildingName = createdBuilding.name)
+            } catch (e: Exception) {
                 handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания: ${e.message}"))
             }
         }
@@ -525,8 +531,6 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
 
     suspend fun getBuildingById(buildingId: Long): Building {
         return withContext(Dispatchers.IO) {
-            // Здесь должен быть ваш код для получения информации о здании
-            // Временно возвращаем моковые данные
             Building(buildingId.toInt(), "Building 1", "Address 1")
         }
     }

@@ -8,7 +8,7 @@ import com.rawello.mapar.data.models.SignUpRequest
 import retrofit2.http.*
 
 interface ApiService {
-    // Публичные эндпоинты (доступны анонимным пользователям)
+    // Публичные эндпоинты
     @GET("api/buildings")
     suspend fun getAllBuildings(): List<Building>
 
@@ -28,7 +28,7 @@ interface ApiService {
     @GET("api/auth/validate-token")
     suspend fun validateToken(): Boolean
 
-    // Защищенные эндпоинты (требуют авторизации)
+    // Защищенные эндпоинты 
     @POST("api/users/favorites")
     suspend fun updateFavorites(@Body favorites: List<Long>)
 

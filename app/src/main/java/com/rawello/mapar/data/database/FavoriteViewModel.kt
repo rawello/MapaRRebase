@@ -24,15 +24,15 @@ class FavoriteViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    fun addFavorite(nodeId: Int, nodeName: String) {
+    fun addFavorite(buildingId: Int, buildingName: String) {
         viewModelScope.launch {
-            repository.insertFavorite(FavoriteEntity(nodeId = nodeId, nodeName = nodeName))
+            repository.insertFavorite(FavoriteEntity(buildingId = buildingId, buildingName = buildingName))
         }
     }
 
-    fun removeFavorite(nodeId: Int) {
+    fun removeFavorite(buildingId: Int) {
         viewModelScope.launch {
-            repository.deleteByNodeId(nodeId)
+            repository.deleteByBuildingId(buildingId)
         }
     }
 
@@ -42,7 +42,7 @@ class FavoriteViewModel(application: Application) : AndroidViewModel(application
                 @Suppress("UNCHECKED_CAST")
                 return FavoriteViewModel(application) as T
             }
-            throw IllegalArgumentException("Unknown ViewModel class")
+            throw IllegalArgumentException("Неизвестный класс ViewModel")
         }
     }
 }

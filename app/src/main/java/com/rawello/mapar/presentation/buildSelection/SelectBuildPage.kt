@@ -78,22 +78,29 @@ sealed class SelectBuildIntent {
 }
 
 @Composable
-fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildState) {
+fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildState, snackbarHostState: SnackbarHostState) {
     var isLoading by remember { mutableStateOf(false) }
     var showLocalDialog by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var loginErrorMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
-    // Получаем ViewModel и локальные избранные на верхнем уровне!
     val favoriteViewModel: FavoriteViewModel = viewModel(
         factory = FavoriteViewModel.Factory(context.applicationContext as android.app.Application)
     )
     val localFavorites by favoriteViewModel.favorites.collectAsState()
 
+    LaunchedEffect(localFavorites) {
+        Log.d("FAVORITES_DEBUG", "localFavorites: ${localFavorites.map { it.buildingId to it.buildingName }}")
+    }
+
     LaunchedEffect(Unit) {
         isLoading = true
         val hasNetwork = NetworkUtils.isNetworkAvailable(context)
+        val repo = BuildingRepository(context)
+        val localBuildings = repo.getAllBuildings()
+        val localFavoritesList = localFavorites.map { it.buildingId.toLong() }
+        Log.d("FAVORITES_DEBUG", "localFavoritesList: $localFavoritesList, hasNetwork=$hasNetwork, localBuildings.size=${localBuildings.size}")
         if (hasNetwork) {
             try {
                 withTimeout(2500) {
@@ -102,54 +109,37 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                     } catch (e: Exception) {
                         emptyList()
                     }
-                    try {
-                        val favorites = withTimeoutOrNull(1500) {
-                            try {
-                                ApiFactory.apiService.getFavorites()
-                            } catch (e: Exception) {
-                                null
-                            }
+                    val favorites = try {
+                        withTimeoutOrNull(1500) {
+                            ApiFactory.apiService.getFavorites()
                         }
-                        if (favorites != null) {
-                            onIntent(SelectBuildIntent.UpdateFavorites(favorites))
-                        } else if (localFavorites.isNotEmpty()) {
-                            onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
-                        }
-                    } catch(_:Exception) {
-                        if (localFavorites.isNotEmpty()) {
-                            onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
-                        }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (favorites != null && favorites.isNotEmpty()) {
+                        onIntent(SelectBuildIntent.UpdateFavorites(favorites))
+                    } else if (localFavoritesList.isNotEmpty()) {
+                        onIntent(SelectBuildIntent.UpdateFavorites(localFavoritesList))
                     }
                     if (buildings.isNotEmpty()) {
                         onIntent(SelectBuildIntent.UpdateBuildings(buildings.map { Building(it.id, it.name, it.address) }))
-                        val repo = BuildingRepository(context)
                         buildings.forEach { repo.insertBuilding(Building(it.id, it.name, it.address)) }
-                    } else {
-                        val repo = BuildingRepository(context)
-                        val localBuildings = repo.getAllBuildings()
-                        if (localBuildings.isNotEmpty()) {
-                            if (!NetworkUtils.isNetworkAvailable(context)) {
-                                showLocalDialog = true
-                            }
-                            onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
-                            if (localFavorites.isNotEmpty()) {
-                                onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
-                            }
-                        } else {
-                            onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
+                    } else if (localBuildings.isNotEmpty()) {
+                        if (!hasNetwork) showLocalDialog = true
+                        onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
+                        if (localFavoritesList.isNotEmpty()) {
+                            onIntent(SelectBuildIntent.UpdateFavorites(localFavoritesList))
                         }
+                    } else {
+                        onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
                     }
                 }
             } catch (e: Exception) {
-                val repo = BuildingRepository(context)
-                val localBuildings = repo.getAllBuildings()
                 if (localBuildings.isNotEmpty()) {
-                    if (!NetworkUtils.isNetworkAvailable(context)) {
-                        showLocalDialog = true
-                    }
+                    if (!hasNetwork) showLocalDialog = true
                     onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
-                    if (localFavorites.isNotEmpty()) {
-                        onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                    if (localFavoritesList.isNotEmpty()) {
+                        onIntent(SelectBuildIntent.UpdateFavorites(localFavoritesList))
                     }
                 } else {
                     onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
@@ -158,13 +148,11 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                 isLoading = false
             }
         } else {
-            val repo = BuildingRepository(context)
-            val localBuildings = repo.getAllBuildings()
             if (localBuildings.isNotEmpty()) {
                 showLocalDialog = true
                 onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
-                if (localFavorites.isNotEmpty()) {
-                    onIntent(SelectBuildIntent.UpdateFavorites(localFavorites.map { it.nodeId.toLong() }))
+                if (localFavoritesList.isNotEmpty()) {
+                    onIntent(SelectBuildIntent.UpdateFavorites(localFavoritesList))
                 }
             } else {
                 onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
@@ -195,11 +183,10 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
         val searchBarOffset by animateDpAsState(targetValue = if (showSearch) 56.dp else -searchBarHeight - 24.dp)
         val contentTopPadding by animateDpAsState(targetValue = if (showSearch) 104.dp else 32.dp)
 
-        // --- Основной контент (список зданий и т.д.) ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = contentTopPadding, bottom = 32.dp) // Динамический отступ сверху
+                .padding(top = contentTopPadding, bottom = 32.dp)
         ) {
             if (isLoading) {
                 Box(
@@ -220,8 +207,16 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                     )
                 }
             } else {
+                val favoritesToShow = if (state.favorites.isNotEmpty()) {
+                    state.favorites
+                } else if (localFavorites.isNotEmpty()) {
+                    localFavorites.map { it.buildingId.toLong() }
+                } else {
+                    emptyList()
+                }
+
                 AnimatedVisibility(
-                    visible = state.favorites.isNotEmpty(),
+                    visible = favoritesToShow.isNotEmpty(),
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
@@ -230,8 +225,23 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                             text = "Избранные здания",
                             modifier = Modifier.padding(start = 16.dp, top = 16.dp)
                         )
+                        val context = LocalContext.current
+                        val localBuildingsState = produceState<List<Building>>(initialValue = emptyList(), context) {
+                            value = BuildingRepository(context).getAllBuildings()
+                        }
+                        val favoritesBuildings = remember(favoritesToShow, state.buildings, localBuildingsState.value, localFavorites) {
+                            val result = favoritesToShow.mapNotNull { id ->
+                                state.buildings.find { it.id.toLong() == id }
+                                    ?: localBuildingsState.value.find { it.id.toLong() == id }
+                                    ?: localFavorites.find { it.buildingId.toLong() == id }?.let { fav ->
+                                        com.rawello.mapar.data.models.Building(fav.buildingId, fav.buildingName, "—")
+                                    }
+                            }
+                            Log.d("FAVORITES_DEBUG", "favoritesBuildings: ${result.map { it.id to it.name }}")
+                            result
+                        }
                         AnimatedFavoritesList(
-                            favorites = state.favorites.map { id -> state.buildings.find { it.id.toLong() == id }!! },
+                            favorites = favoritesBuildings,
                             onSelect = { building -> onIntent(SelectBuildIntent.SelectBuilding(building)) },
                             onToggleFavorite = { buildingId -> onIntent(SelectBuildIntent.ToggleFavorite(buildingId)) }
                         )
@@ -245,7 +255,7 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 32.dp) // Дополнительный отступ для плавающего BottomBar
+                        .padding(bottom = 32.dp)
                 ) {
                     val filteredBuildings = state.buildings.filter { it.name.contains(state.searchQuery, ignoreCase = true) }
                     items(filteredBuildings) { building ->
@@ -259,7 +269,6 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
             }
         }
 
-        // --- Анимированная выезжающая строка поиска сверху ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -293,7 +302,6 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
             }
         }
 
-        // --- Плавающий BottomBar ---
         Box(
             modifier = Modifier
                 .fillMaxSize(),
@@ -303,7 +311,7 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                 modifier = Modifier
                     .widthIn(min = 260.dp, max = 400.dp)
                     .height(64.dp)
-                    .offset(y = (-32).dp), // Приподнимаем на 32dp над низом
+                    .offset(y = (-32).dp),
                 shape = RoundedCornerShape(32.dp),
                 elevation = CardDefaults.cardElevation(8.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f))
@@ -326,7 +334,6 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
             }
         }
 
-        // --- Диалог аккаунта ---
         if (showAccountDialog) {
             val tokenManager = remember { TokenManager.getInstance(context) }
             var currentUser by remember { mutableStateOf<String?>(null) }
@@ -388,10 +395,21 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    // TODO: отправить запрос на создание здания на сервер
-                                    Log.d("SelectBuildPage", "Создание здания: $newBuildingName, адрес: $newBuildingAddress")
-                                    showNewBuildingDialog = false
-                                }
+                                    scope.launch {
+                                        try {
+                                            val created = ApiFactory.apiService.createBuilding(
+                                                Building(0, newBuildingName, newBuildingAddress)
+                                            )
+                                            val buildings = ApiFactory.apiService.getAllBuildings()
+                                            onIntent(SelectBuildIntent.UpdateBuildings(buildings))
+                                            showNewBuildingDialog = false
+                                            snackbarHostState.showSnackbar("Здание успешно создано")
+                                        } catch (e: Exception) {
+                                            snackbarHostState.showSnackbar("Ошибка создания здания: ${e.message}")
+                                        }
+                                    }
+                                },
+                                enabled = newBuildingName.isNotBlank() && newBuildingAddress.isNotBlank()
                             ) { Text("Создать") }
                         },
                         dismissButton = {
@@ -417,8 +435,20 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                                     Log.d("LoginDialog", "Успешный вход: $trimmedUsername, token: ${response.token}")
                                     TokenManager.getInstance(context).login(trimmedUsername, response.token)
                                     currentUser = trimmedUsername
-                                    showAccountDialog = false // Автоматически закрываем окно при успехе
+                                    showAccountDialog = false
                                     loginErrorMessage = null
+                                    isLoading = true
+                                    try {
+                                        val favorites = withTimeoutOrNull(1500) {
+                                            ApiFactory.apiService.getFavorites()
+                                        }
+                                        if (favorites != null) {
+                                            onIntent(SelectBuildIntent.UpdateFavorites(favorites))
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("LoginDialog", "Ошибка загрузки избранных после логина: ${e.message}")
+                                    }
+                                    isLoading = false
                                 } catch (e: Exception) {
                                     Log.e("LoginDialog", "Ошибка входа: $trimmedUsername, ${e.message}", e)
                                     val isForbidden = e.message?.contains("403") == true
@@ -437,7 +467,7 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                                     val response = ApiFactory.apiService.login(com.rawello.mapar.data.models.LoginRequest(trimmedUsername, trimmedPassword))
                                     TokenManager.getInstance(context).login(trimmedUsername, response.token)
                                     currentUser = trimmedUsername
-                                    showAccountDialog = false // Автоматически закрываем окно при успехе
+                                    showAccountDialog = false
                                     loginErrorMessage = null
                                 } catch (e: Exception) {
                                     Log.e("LoginDialog", "Ошибка регистрации: $trimmedUsername, ${e.message}", e)
@@ -446,7 +476,7 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                                 }
                             }
                         },
-                        snackbarHostState = remember { SnackbarHostState() },
+                        snackbarHostState = snackbarHostState,
                         scope = scope,
                         context = context,
                         errorMessage = loginErrorMessage
@@ -455,7 +485,6 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
             }
         }
 
-        // --- Диалог выхода ---
         if (showLogoutDialog) {
             val scope = rememberCoroutineScope()
             AlertDialog(
@@ -606,14 +635,12 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
     val isLoading: MutableState<Boolean> = remember { mutableStateOf(false) }
     val showSelectBuildPage: MutableState<Boolean> = remember { mutableStateOf(true) }
 
-    // --- FavoriteViewModel для локального избранного ---
     val context = LocalContext.current.applicationContext
     val favoriteViewModel: FavoriteViewModel = viewModel(
         factory = FavoriteViewModel.Factory(context as android.app.Application)
     )
     val localFavorites by favoriteViewModel.favorites.collectAsState()
 
-    // --- UI для входа/регистрации ---
     var showAuthDialog by remember { mutableStateOf(false) }
     var authMessage by remember { mutableStateOf<String?>(null) }
 
@@ -621,7 +648,7 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
         when (intent) {
             is SelectBuildIntent.NavigateToNext -> {
                 state.selectedBuilding?.let { building ->
-                    Log.d("NavigationDebug", "Building ID: ${building.id}, Building Name: ${building.name}")
+                    Log.d("NavigationDebug", "ID здания: ${building.id}, Название здания: ${building.name}")
                     val encodedName = building.name.replace(" ", "_")
                     val route = Routes.ArScene.string
                         .replace("{buildingId}", building.id.toString())
@@ -636,7 +663,13 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
             is SelectBuildIntent.SelectBuilding -> {
                 state = state.copy(selectedBuilding = intent.building)
                 showSelectBuildPage.value = false
-                loadNodesForBuilding(intent.building.id, nodeViewModel, snackbarHostState, state, isLoading, navController)
+                navController.navigate(
+                    Routes.ArScene.string
+                        .replace("{buildingId}", intent.building.id.toString())
+                        .replace("{buildingName}", intent.building.name.replace(" ", "_"))
+                ) {
+                    launchSingleTop = true
+                }
             }
             is SelectBuildIntent.UpdateSearchQuery -> {
                 state = state.copy(searchQuery = intent.query)
@@ -645,11 +678,9 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
                 val favorites = state.favorites.toMutableList()
                 if (favorites.contains(intent.buildingId)) {
                     favorites.remove(intent.buildingId)
-                    // Удаляем из локального избранного
                     favoriteViewModel.removeFavorite(intent.buildingId.toInt())
                 } else {
                     favorites.add(intent.buildingId)
-                    // Добавляем в локальное избранное
                     val building = state.buildings.find { it.id.toLong() == intent.buildingId }
                     if (building != null) {
                         favoriteViewModel.addFavorite(building.id, building.name)
@@ -683,8 +714,8 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
                 SelectBuildPage(onIntent = { intent ->
                     onIntent(intent)
                 }, state = state.copy(
-                    favorites = if (/* пользователь не вошёл */ false) localFavorites.map { it.nodeId.toLong() } else state.favorites
-                ))
+                    favorites = if (false) localFavorites.map { it.buildingId.toLong() } else state.favorites
+                ), snackbarHostState = snackbarHostState)
             }
         }
     }
@@ -706,7 +737,6 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
                         showAuthDialog = false
                     } catch (e: Exception) {
                         Log.e("LoginDialog", "Ошибка входа: $trimmedUsername, ${e.message}", e)
-                        // Проверяем на 403
                         val isForbidden = e.message?.contains("403") == true
                         authMessage = if (isForbidden) "Неверный логин или пароль" else (e.message ?: "Неизвестная ошибка")
                     }
@@ -737,7 +767,6 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
         )
     }
 
-    // Показываем Snackbar для сообщений об аутентификации
     LaunchedEffect(authMessage) {
         authMessage?.let {
             snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short)
@@ -748,53 +777,70 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
     SnackbarHost(hostState = snackbarHostState)
 }
 
-fun loadNodesForBuilding(buildingId: Int, nodeViewModel: NodeViewModel, snackbarHostState: SnackbarHostState,
-                         state: SelectBuildState, isLoading: MutableState<Boolean>, navController: NavController) {
+fun loadNodesForBuilding(
+    buildingId: Int,
+    nodeViewModel: NodeViewModel,
+    snackbarHostState: SnackbarHostState,
+    state: SelectBuildState,
+    isLoading: MutableState<Boolean>,
+    navController: NavController
+) {
     CoroutineScope(Dispatchers.IO).launch {
         isLoading.value = true
         try {
-            Log.d("SelectBuildPage", "Starting to load nodes for building $buildingId")
-            val nodesResponse = ApiFactory.apiService.getNodesForBuilding(buildingId.toLong())
-            Log.d("SelectBuildPage", "Received ${nodesResponse.size} nodes from server for building $buildingId")
-            
-            // Очищаем существующие точки
-            Log.d("SelectBuildPage", "Truncating existing nodes")
-            nodeViewModel.truncate()
-            delay(500) // Даем время на очистку базы
-            
-            withContext(Dispatchers.Main) {
-                var allNodesInserted = true
-                
-                nodesResponse.forEach { nodeResponse ->
-                    try {
-                        Log.d("SelectBuildPage", "Converting node: id=${nodeResponse.id}, type=${nodeResponse.modelPath}")
-                        val nodeDb = convertNodeResponseToNodeDb(nodeResponse, buildingId.toLong())
-                        Log.d("SelectBuildPage", "Converted node: ${nodeDb.id}, type=${nodeDb.type}, title=${nodeDb.title}")
-                        nodeViewModel.insertNode(nodeDb)
-                    } catch (e: Exception) {
-                        Log.e("SelectBuildPage", "Error inserting node: ${e.message}")
-                        allNodesInserted = false
+            Log.d("SelectBuildPage", "Начинаем загрузку точек для здания $buildingId")
+            var nodesResponse: List<NodeResponse>? = null
+            var networkAvailable = false
+            try {
+                nodesResponse = ApiFactory.apiService.getNodesForBuilding(buildingId.toLong())
+                networkAvailable = true
+            } catch (e: Exception) {
+                Log.e("SelectBuildPage", "Нет сети или ошибка сервера, пробуем локальную БД: ${e.message}")
+            }
+            if (networkAvailable && nodesResponse != null) {
+                Log.d("SelectBuildPage", "Получено ${nodesResponse.size} точек с сервера для здания $buildingId")
+                Log.d("SelectBuildPage", "Очистка существующих точек")
+                nodeViewModel.truncate()
+                delay(500)
+                withContext(Dispatchers.Main) {
+                    var allNodesInserted = true
+                    nodesResponse.forEach { nodeResponse ->
+                        try {
+                            val nodeDb = convertNodeResponseToNodeDb(nodeResponse, buildingId.toLong())
+                            nodeViewModel.insertNode(nodeDb)
+                        } catch (e: Exception) {
+                            Log.e("SelectBuildPage", "Ошибка вставки точки: ${e.message}")
+                            allNodesInserted = false
+                        }
+                    }
+                    if (allNodesInserted) {
+                        delay(1000)
+                        val encodedName = state.selectedBuilding?.name?.replace(" ", "_") ?: ""
+                        val route = Routes.ArScene.string
+                            .replace("{buildingId}", buildingId.toString())
+                            .replace("{buildingName}", encodedName)
+                        navController.navigate(route) { launchSingleTop = true }
+                    } else {
+                        snackbarHostState.showSnackbar("Ошибка при загрузке некоторых точек")
                     }
                 }
-
-                if (allNodesInserted) {
-                    delay(1000) // Даем больше времени на завершение вставки
-                    Log.d("SelectBuildPage", "All nodes inserted successfully, navigating to AR screen")
-                    val encodedName = state.selectedBuilding?.name?.replace(" ", "_") ?: ""
-                    val route = Routes.ArScene.string
-                        .replace("{buildingId}", buildingId.toString())
-                        .replace("{buildingName}", encodedName)
-                    navController.navigate(route) {
-                        // Опционально: добавляем настройки навигации
-                        launchSingleTop = true
+            } else {
+                val localNodes = nodeViewModel.getNodesForBuilding(buildingId.toLong())
+                withContext(Dispatchers.Main) {
+                    if (localNodes.isNotEmpty()) {
+                        Log.d("SelectBuildPage", "Загружено ${localNodes.size} точек из локальной БД, переход к экрану AR")
+                        val encodedName = state.selectedBuilding?.name?.replace(" ", "_") ?: ""
+                        val route = Routes.ArScene.string
+                            .replace("{buildingId}", buildingId.toString())
+                            .replace("{buildingName}", encodedName)
+                        navController.navigate(route) { launchSingleTop = true }
+                    } else {
+                        snackbarHostState.showSnackbar("Нет точек для здания в локальной базе. Подключитесь к интернету для первой загрузки.")
                     }
-                } else {
-                    Log.e("SelectBuildPage", "Some nodes failed to insert")
-                    snackbarHostState.showSnackbar("Ошибка при загрузке некоторых точек")
                 }
             }
         } catch (e: Exception) {
-            Log.e("SelectBuildPage", "Error loading nodes: ${e.message}", e)
+            Log.e("SelectBuildPage", "Ошибка загрузки точек: ${e.message}", e)
             withContext(Dispatchers.Main) {
                 snackbarHostState.showSnackbar("Ошибка загрузки точек: ${e.message}")
             }
@@ -822,7 +868,7 @@ fun updateFavorites(favorites: List<Long>) {
         try {
             ApiFactory.apiService.updateFavorites(favorites)
         } catch (e: Exception) {
-            Log.e("updateFavorites", "Error updating favorites: ${e.message}", e)
+            Log.e("updateFavorites", "Ошибка обновления избранного: ${e.message}", e)
         }
     }
 }

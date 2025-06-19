@@ -42,9 +42,6 @@ class TokenManager private constructor(context: Context) {
         }
     }
 
-    /**
-     * Должна вызываться один раз при старте приложения, чтобы связать ApiFactory с TokenManager
-     */
     suspend fun bindApiFactoryTokenProvider() {
         ApiFactory.updateTokenProvider {
             lastToken
@@ -61,9 +58,14 @@ class TokenManager private constructor(context: Context) {
             bindApiFactoryTokenProvider()
             try {
                 initializeTokens()
+                val userToken = tokenDao.getAllTokens().find { it.name != "Anonymous" }?.token
+                val token = userToken ?: tokenDao.getTokenByName("Anonymous")?.token
+                if (token != null) updateTokenEverywhere(token)
             } catch (e: Exception) {
-                Log.e("TokenManager", "Error initializing tokens: ${e.message}")
+                Log.e("TokenManager", "Ошибка при инициализации токенов: ${e.message}")
                 ensureAnonymousToken()
+                val anonToken = tokenDao.getTokenByName("Anonymous")?.token
+                if (anonToken != null) updateTokenEverywhere(anonToken)
             }
         }
     }
@@ -114,27 +116,6 @@ class TokenManager private constructor(context: Context) {
     private suspend fun validateAndUpdateToken(token: String, username: String?): Boolean {
         Log.d("TokenManager", "validateAndUpdateToken: token=$token, username=$username")
         updateTokenEverywhere(token)
-        // Валидация токена временно отключена по просьбе пользователя
-        // return try {
-        //     Log.d("TokenManager", "Вызов validateToken() через ApiFactory.apiService")
-        //     if (ApiFactory.apiService.validateToken()) {
-        //         Log.d("TokenManager", "Токен валиден")
-        //         true
-        //     } else {
-        //         Log.d("TokenManager", "Токен невалиден, username=$username")
-        //         if (username != "Anonymous") {
-        //             Log.d("TokenManager", "Пользовательский токен невалиден, возвращаем false")
-        //             false
-        //         } else {
-        //             Log.d("TokenManager", "Анонимный токен невалиден, пробуем получить новый")
-        //             ensureAnonymousToken()
-        //             true
-        //         }
-        //     }
-        // } catch (e: Exception) {
-        //     Log.e("TokenManager", "Ошибка при валидации токена: ${e.message}", e)
-        //     false
-        // }
         return true
     }
 
@@ -166,10 +147,10 @@ class TokenManager private constructor(context: Context) {
                 Log.d("TokenManager", "[login] Анонимный токен удалён из БД")
                 tokenDao.insertToken(Token(username, token))
                 Log.d("TokenManager", "[login] Токен пользователя $username сохранён в БД")
-                updateTokenEverywhere(token)
+                updateTokenEverywhere(token) 
             } else {
                 Log.e("TokenManager", "[login] Не удалось валидировать токен пользователя $username")
-                throw IllegalStateException("Invalid user token")
+                throw IllegalStateException("Невалидный токен пользователя")
             }
         }
     }
@@ -180,6 +161,8 @@ class TokenManager private constructor(context: Context) {
                 tokenDao.deleteToken(token)
             }
             ensureAnonymousToken()
+            val anonToken = tokenDao.getTokenByName("Anonymous")?.token
+            if (anonToken != null) updateTokenEverywhere(anonToken) 
         }
     }
 
@@ -219,7 +202,6 @@ class TokenManager private constructor(context: Context) {
                     Log.d("TokenManager", "[isBuildingOwner] Нет токена, возвращаем false")
                     return@withContext false
                 }
-                // Попробуем декодировать payload токена для отладки
                 try {
                     val parts = token.split(".")
                     if (parts.size == 3) {
