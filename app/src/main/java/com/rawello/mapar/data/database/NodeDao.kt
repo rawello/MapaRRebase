@@ -27,4 +27,7 @@ interface NodeDao{
 
     @Query("SELECT * FROM nodes WHERE buildingId = :buildingId")
     suspend fun getNodesForBuilding(buildingId: Long): List<NodeDb>
+
+    @Query("DELETE FROM Nodes WHERE buildingId = :buildingId")
+    suspend fun deleteNodesForBuilding(buildingId: Long)
 }

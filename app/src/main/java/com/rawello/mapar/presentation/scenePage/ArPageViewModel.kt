@@ -29,6 +29,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.rawello.mapar.data.models.CreateBuildingRequest
 import com.rawello.mapar.data.models.QrBuildingInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
@@ -363,12 +364,35 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
                     name = state.value.buildingName,
                     address = ""
                 )
-
                 updateBuilding(building)
 
-                state.value.nodeList.forEach { node ->
-                    updateNode(node)
+                val serverNodes = ApiFactory.apiService.getNodesForBuilding(state.value.buildingId.toLong())
+                val localNodes = state.value.nodeList
+                val buildingId = state.value.buildingId.toLong()
+
+                val toDelete = serverNodes.filter { sn -> localNodes.none { it.id == sn.id } }
+                toDelete.forEach {
+                    try {
+                        ApiFactory.apiService.deleteNodeForBuilding(buildingId, it.id.toLong())
+                    } catch (_: Exception) {}
                 }
+
+                val toAdd = localNodes.filter { ln -> ln.id == 0 || serverNodes.none { it.id == ln.id } }
+                toAdd.forEach {
+                    try {
+                        ApiFactory.apiService.createNodeForBuilding(buildingId, convertNodeDbToNodeResponse(it))
+                    } catch (_: Exception) {}
+                }
+
+                val toUpdate = localNodes.filter { ln -> ln.id != 0 && serverNodes.any { it.id == ln.id } }
+                toUpdate.forEach {
+                    try {
+                        ApiFactory.apiService.updateNodeForBuilding(buildingId, it.id.toLong(), convertNodeDbToNodeResponse(it))
+                    } catch (_: Exception) {}
+                }
+
+                val updatedNodes = ApiFactory.apiService.getNodesForBuilding(state.value.buildingId.toLong())
+                _state.value = _state.value.copy(nodeList = updatedNodes.map { convertNodeResponseToNodeDb(it) })
 
                 handleIntent(ArPageIntent.ShowSnackbar("Здание успешно сохранено"))
             } catch (e: Exception) {
@@ -380,11 +404,10 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     fun createBuilding(buildingName: String) {
         viewModelScope.launch {
             try {
-                val building = Building(name = buildingName, address = "")
-                val createdBuilding = ApiFactory.apiService.createBuilding(building)
+                val createdBuilding = ApiFactory.apiService.createBuilding(CreateBuildingRequest(buildingName, ""))
                 _state.value = _state.value.copy(buildingId = createdBuilding.id, buildingName = createdBuilding.name)
             } catch (e: Exception) {
-                handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания: ${e.message}"))
+                handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания:  {e.message}"))
             }
         }
     }
@@ -392,11 +415,10 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     fun createBuilding(buildingName: String, buildingAddress: String) {
         viewModelScope.launch {
             try {
-                val building = Building(name = buildingName, address = buildingAddress)
-                val createdBuilding = ApiFactory.apiService.createBuilding(building)
+                val createdBuilding = ApiFactory.apiService.createBuilding(CreateBuildingRequest(buildingName, buildingAddress))
                 _state.value = _state.value.copy(buildingId = createdBuilding.id, buildingName = createdBuilding.name)
             } catch (e: Exception) {
-                handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания: ${e.message}"))
+                handleIntent(ArPageIntent.ShowSnackbar("Ошибка при создании здания:  {e.message}"))
             }
         }
     }
@@ -446,20 +468,21 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
     fun convertNodeDbToNodeResponse(nodeDb: NodeDb): NodeResponse {
         return NodeResponse(
             id = nodeDb.id,
-            name = nodeDb.nameNode.toInt(),
+            name = nodeDb.nameNode,
             translation = nodeDb.translation.joinToString(","),
             quaternion = nodeDb.quaternion.joinToString(","),
             modelPath = nodeDb.type,
             title = nodeDb.title,
-            neighbors = nodeDb.neighbors
+            neighbors = nodeDb.neighbors,
+            buildingId = nodeDb.buildingId
         )
     }
 
     fun convertNodeResponseToNodeDb(nodeResponse: NodeResponse): NodeDb {
         return NodeDb(
             id = nodeResponse.id,
-            buildingId = state.value.buildingId.toLong(),
-            nameNode = nodeResponse.name.toString(),
+            buildingId = nodeResponse.buildingId,
+            nameNode = nodeResponse.name,
             translation = nodeResponse.translation.split(",").map { it.toFloat() }.toFloatArray(),
             quaternion = nodeResponse.quaternion.split(",").map { it.toFloat() }.toFloatArray(),
             type = nodeResponse.modelPath,
@@ -546,6 +569,31 @@ class ArPageViewModel(private val nodeViewModel: NodeViewModel) : ViewModel() {
         routeInfoHideJob = viewModelScope.launch {
             delay(3500)
             _state.value = _state.value.copy(showRouteInfoBar = false, wasRouteActive = false, turnDirection = "Прямо")
+        }
+    }
+
+
+    fun fetchNodesForBuildingOnInit(buildingId: Int) {
+        viewModelScope.launch {
+            setLoading(true)
+            try {
+                val serverNodes = ApiFactory.apiService.getNodesForBuilding(buildingId.toLong())
+                val nodeDbs = serverNodes.map { convertNodeResponseToNodeDb(it) }
+
+                nodeViewModel.deleteNodesForBuilding(buildingId.toLong())
+                nodeDbs.forEach { nodeViewModel.insertNode(it) }
+
+                setNodeList(nodeDbs)
+                Log.d("ArPageViewModel", "[fetchNodesForBuildingOnInit] Загружено с сервера: ${nodeDbs.size} точек для здания $buildingId")
+            } catch (e: Exception) {
+                Log.e("ArPageViewModel", "[fetchNodesForBuildingOnInit] Ошибка загрузки с сервера: ${e.message}")
+
+                val localNodes = nodeViewModel.getNodesForBuilding(buildingId.toLong())
+                setNodeList(localNodes)
+                Log.d("ArPageViewModel", "[fetchNodesForBuildingOnInit] Загружено локально: ${localNodes.size} точек для здания $buildingId")
+            } finally {
+                setLoading(false)
+            }
         }
     }
 }

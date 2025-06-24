@@ -46,6 +46,7 @@ import com.rawello.mapar.data.database.BuildingRepository
 import com.rawello.mapar.data.database.NetworkUtils
 import com.rawello.mapar.data.models.Building
 import com.rawello.mapar.data.models.NodeDb
+import com.rawello.mapar.data.models.CreateBuildingRequest
 import com.rawello.mapar.data.network.ApiFactory
 import com.rawello.mapar.data.network.NodeResponse
 import com.rawello.mapar.presentation.Routes
@@ -57,28 +58,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 
-data class SelectBuildState(
-    val buildings: List<Building> = emptyList(),
-    val selectedBuilding: Building? = null,
-    val searchQuery: String = "",
-    val errorMessage: String? = null,
-    val favorites: List<Long> = emptyList()
-)
-
-sealed class SelectBuildIntent {
-    data object NavigateToNext : SelectBuildIntent()
-    data object NavigateQr : SelectBuildIntent()
-    data object NavigateText : SelectBuildIntent()
-    data class SelectBuilding(val building: Building) : SelectBuildIntent()
-    data class UpdateSearchQuery(val query: String) : SelectBuildIntent()
-    data class ToggleFavorite(val buildingId: Long) : SelectBuildIntent()
-    data class UpdateBuildings(val buildings: List<Building>) : SelectBuildIntent()
-    data class UpdateErrorMessage(val message: String) : SelectBuildIntent()
-    data class UpdateFavorites(val favorites: List<Long>) : SelectBuildIntent()
-}
-
 @Composable
-fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildState, snackbarHostState: SnackbarHostState) {
+fun SelectBuildPage(
+    onIntent: (SelectBuildIntent) -> Unit,
+    state: SelectBuildState,
+    snackbarHostState: SnackbarHostState,
+    nodeViewModel: NodeViewModel
+) {
     var isLoading by remember { mutableStateOf(false) }
     var showLocalDialog by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
@@ -89,9 +75,24 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
         factory = FavoriteViewModel.Factory(context.applicationContext as android.app.Application)
     )
     val localFavorites by favoriteViewModel.favorites.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(localFavorites) {
         Log.d("FAVORITES_DEBUG", "localFavorites: ${localFavorites.map { it.buildingId to it.buildingName }}")
+    }
+
+    LaunchedEffect(state.buildings) {
+        if (state.buildings.isNotEmpty()) {
+            Log.d("BuildingsDebug", "LaunchedEffect(state.buildings): запускаем syncNodesForBuildings через scope.launch")
+            scope.launch {
+                try {
+                    syncNodesForBuildings(state.buildings, nodeViewModel)
+                    Log.d("BuildingsDebug", "syncNodesForBuildings завершён (через scope.launch)")
+                } catch (e: Exception) {
+                    Log.e("BuildingsDebug", "Ошибка при syncNodesForBuildings: ${e.message}", e)
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -103,12 +104,15 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
         Log.d("FAVORITES_DEBUG", "localFavoritesList: $localFavoritesList, hasNetwork=$hasNetwork, localBuildings.size=${localBuildings.size}")
         if (hasNetwork) {
             try {
+                var buildings: List<com.rawello.mapar.data.models.Building> = emptyList()
+                var needSyncNodes = false
                 withTimeout(2500) {
-                    val buildings = try {
+                    val apiBuildings = try {
                         ApiFactory.apiService.getAllBuildings()
                     } catch (e: Exception) {
                         emptyList()
                     }
+                    Log.d("BuildingsDebug", "Получено зданий: ${apiBuildings.size} -> ${apiBuildings.joinToString { "[id=${it.id}, name=${it.name}]" }}")
                     val favorites = try {
                         withTimeoutOrNull(1500) {
                             ApiFactory.apiService.getFavorites()
@@ -116,14 +120,24 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                     } catch (e: Exception) {
                         null
                     }
-                    if (favorites != null && favorites.isNotEmpty()) {
+                    if (!favorites.isNullOrEmpty()) {
                         onIntent(SelectBuildIntent.UpdateFavorites(favorites))
                     } else if (localFavoritesList.isNotEmpty()) {
                         onIntent(SelectBuildIntent.UpdateFavorites(localFavoritesList))
                     }
-                    if (buildings.isNotEmpty()) {
-                        onIntent(SelectBuildIntent.UpdateBuildings(buildings.map { Building(it.id, it.name, it.address) }))
-                        buildings.forEach { repo.insertBuilding(Building(it.id, it.name, it.address)) }
+                    if (apiBuildings.isNotEmpty()) {
+                        buildings = apiBuildings.map { Building(it.id, it.name, it.address) }
+                        onIntent(SelectBuildIntent.UpdateBuildings(buildings))
+                        buildings.forEach { repo.insertBuilding(it) }
+
+                        try {
+                            Log.d("BuildingsDebug", "Запуск syncNodesForBuildings (прямо после получения зданий)")
+                            syncNodesForBuildings(buildings, nodeViewModel)
+                            Log.d("BuildingsDebug", "syncNodesForBuildings завершён (прямо после получения зданий)")
+                        } catch (e: Exception) {
+                            Log.e("BuildingsDebug", "Ошибка при syncNodesForBuildings: ${e.message}", e)
+                        }
+                        needSyncNodes = true
                     } else if (localBuildings.isNotEmpty()) {
                         if (!hasNetwork) showLocalDialog = true
                         onIntent(SelectBuildIntent.UpdateBuildings(localBuildings))
@@ -132,6 +146,16 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                         }
                     } else {
                         onIntent(SelectBuildIntent.UpdateErrorMessage("Нет интернета и нет локальных данных"))
+                    }
+                }
+                Log.d("BuildingsDebug", "Выход из withTimeout, buildings.size=${buildings.size}, needSyncNodes=$needSyncNodes")
+                if (needSyncNodes && buildings.isNotEmpty()) {
+                    try {
+                        Log.d("BuildingsDebug", "Запуск syncNodesForBuildings")
+                        syncNodesForBuildings(buildings, nodeViewModel)
+                        Log.d("BuildingsDebug", "syncNodesForBuildings завершён")
+                    } catch (e: Exception) {
+                        Log.e("BuildingsDebug", "Ошибка при syncNodesForBuildings: ${e.message}", e)
                     }
                 }
             } catch (e: Exception) {
@@ -398,7 +422,7 @@ fun SelectBuildPage(onIntent: (SelectBuildIntent) -> Unit, state: SelectBuildSta
                                     scope.launch {
                                         try {
                                             val created = ApiFactory.apiService.createBuilding(
-                                                Building(0, newBuildingName, newBuildingAddress)
+                                                CreateBuildingRequest(newBuildingName, newBuildingAddress)
                                             )
                                             val buildings = ApiFactory.apiService.getAllBuildings()
                                             onIntent(SelectBuildIntent.UpdateBuildings(buildings))
@@ -711,11 +735,14 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
             }
         } else if (showSelectBuildPage.value) {
             Column {
-                SelectBuildPage(onIntent = { intent ->
-                    onIntent(intent)
-                }, state = state.copy(
-                    favorites = if (false) localFavorites.map { it.buildingId.toLong() } else state.favorites
-                ), snackbarHostState = snackbarHostState)
+                SelectBuildPage(
+                    onIntent = { intent -> onIntent(intent) },
+                    state = state.copy(
+                        favorites = if (false) localFavorites.map { it.buildingId.toLong() } else state.favorites
+                    ),
+                    snackbarHostState = snackbarHostState,
+                    nodeViewModel = nodeViewModel
+                )
             }
         }
     }
@@ -775,6 +802,36 @@ fun SelectBuildScreen(navController: NavController, nodeViewModel: NodeViewModel
     }
 
     SnackbarHost(hostState = snackbarHostState)
+}
+
+suspend fun syncNodesForBuildings(buildings: List<com.rawello.mapar.data.models.Building>, nodeViewModel: NodeViewModel) {
+    Log.d("SelectBuildPage", "syncNodesForBuildings старт: ${buildings.size} зданий")
+    withContext(Dispatchers.IO) {
+        buildings.forEach { building ->
+            Log.d("SelectBuildPage", "Синхронизация точек для здания ${building.id}")
+            try {
+                val nodes = ApiFactory.apiService.getNodesForBuilding(building.id.toLong())
+                nodeViewModel.deleteNodesForBuilding(building.id.toLong())
+                nodes.forEach { nodeResp ->
+                    val nodeDb = NodeDb(
+                        id = nodeResp.id,
+                        buildingId = nodeResp.buildingId,
+                        nameNode = nodeResp.name,
+                        translation = nodeResp.translation.split(",").map { it.toFloat() }.toFloatArray(),
+                        quaternion = nodeResp.quaternion.split(",").map { it.toFloat() }.toFloatArray(),
+                        type = nodeResp.modelPath,
+                        title = nodeResp.title,
+                        neighbors = nodeResp.neighbors
+                    )
+                    nodeViewModel.insertNode(nodeDb)
+                }
+                Log.d("SelectBuildPage", "Синхронизировано ${nodes.size} точек для здания ${building.id}")
+            } catch (e: Exception) {
+                Log.e("SelectBuildPage", "Ошибка синхронизации точек для здания ${building.id}: ${e.message}")
+            }
+        }
+    }
+    Log.d("SelectBuildPage", "syncNodesForBuildings завершён")
 }
 
 fun loadNodesForBuilding(
@@ -853,8 +910,8 @@ fun loadNodesForBuilding(
 fun convertNodeResponseToNodeDb(nodeResponse: NodeResponse, buildingId: Long): NodeDb {
     return NodeDb(
         id = nodeResponse.id,
-        buildingId = buildingId,
-        nameNode = "node",
+        buildingId = nodeResponse.buildingId, 
+        nameNode = nodeResponse.name,
         translation = nodeResponse.translation.split(",").map { it.toFloat() }.toFloatArray(),
         quaternion = nodeResponse.quaternion.split(",").map { it.toFloat() }.toFloatArray(),
         type = nodeResponse.modelPath,

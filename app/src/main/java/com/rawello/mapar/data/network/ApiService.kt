@@ -1,6 +1,7 @@
 package com.rawello.mapar.data.network
 
 import com.rawello.mapar.data.models.Building
+import com.rawello.mapar.data.models.CreateBuildingRequest
 import com.rawello.mapar.data.models.JwtAuthenticationResponse
 import com.rawello.mapar.data.models.LoginRequest
 import com.rawello.mapar.data.models.NodeDb
@@ -8,7 +9,6 @@ import com.rawello.mapar.data.models.SignUpRequest
 import retrofit2.http.*
 
 interface ApiService {
-    // Публичные эндпоинты
     @GET("api/buildings")
     suspend fun getAllBuildings(): List<Building>
 
@@ -18,7 +18,6 @@ interface ApiService {
     @GET("api/auth/anonymous-token")
     suspend fun getAnonymousToken(): JwtAuthenticationResponse
 
-    // Аутентификация
     @POST("api/auth/login")
     suspend fun login(@Body loginRequest: LoginRequest): JwtAuthenticationResponse
 
@@ -28,7 +27,6 @@ interface ApiService {
     @GET("api/auth/validate-token")
     suspend fun validateToken(): Boolean
 
-    // Защищенные эндпоинты 
     @POST("api/users/favorites")
     suspend fun updateFavorites(@Body favorites: List<Long>)
 
@@ -41,9 +39,8 @@ interface ApiService {
     @GET("api/buildings/{id}/is-owner")
     suspend fun isBuildingOwner(@Path("id") buildingId: Long): Boolean
 
-    // Эндпоинты для владельцев зданий
     @POST("api/buildings")
-    suspend fun createBuilding(@Body building: Building): Building
+    suspend fun createBuilding(@Body building: CreateBuildingRequest): Building
 
     @PUT("api/buildings/{id}")
     suspend fun updateBuilding(@Path("id") id: Long, @Body building: Building): Building
@@ -53,4 +50,26 @@ interface ApiService {
 
     @PUT("api/nodes/{id}")
     suspend fun updateNode(@Path("id") id: Long, @Body node: NodeResponse): NodeResponse
+
+    @DELETE("api/nodes/{id}")
+    suspend fun deleteNode(@Path("id") id: Long)
+
+    @POST("api/buildings/{buildingId}/nodes")
+    suspend fun createNodeForBuilding(
+        @Path("buildingId") buildingId: Long,
+        @Body node: NodeResponse
+    ): NodeResponse
+
+    @PUT("api/buildings/{buildingId}/nodes/{nodeId}")
+    suspend fun updateNodeForBuilding(
+        @Path("buildingId") buildingId: Long,
+        @Path("nodeId") nodeId: Long,
+        @Body node: NodeResponse
+    ): NodeResponse
+
+    @DELETE("api/buildings/{buildingId}/nodes/{nodeId}")
+    suspend fun deleteNodeForBuilding(
+        @Path("buildingId") buildingId: Long,
+        @Path("nodeId") nodeId: Long
+    )
 }

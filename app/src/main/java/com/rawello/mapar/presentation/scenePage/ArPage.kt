@@ -192,21 +192,16 @@ fun ArPage(
             arPageViewModel.handleIntent(ArPageIntent.SetBuildingId(buildingId))
             arPageViewModel.handleIntent(ArPageIntent.SetBuildingName(buildingName))
 
-            Log.d("ArPage", "[UNIFIED] Загрузка точек для здания $buildingId")
-            val nodes = try {
-                nodeViewModel.getNodesForBuilding(buildingId.toLong())
-            } catch (e: Exception) {
-                Log.e("ArPage", "[UNIFIED] Ошибка загрузки точек из локальной БД", e)
-                emptyList()
-            }
-            Log.d("ArPage", "[UNIFIED] Загружено ${nodes.size} точек")
+            arPageViewModel.fetchNodesForBuildingOnInit(buildingId)
+
+            delay(1000)
+            val nodes = arPageViewModel.state.value.nodeList
+            Log.d("ArPage", "[UNIFIED] Загружено ${nodes.size} точек (state)")
 
             if (nodes.isNotEmpty()) {
                 nodes.forEach { node ->
                     Log.d("ArPage", "[UNIFIED] Точка ${node.id}: type=${node.type}, title=${node.title}, translation=${node.translation.contentToString()}")
                 }
-                arPageViewModel.handleIntent(ArPageIntent.SetNodeList(nodes))
-                delay(1000)
                 if (!editMode) {
                     destinationNodeId?.let { destId ->
                         val sourceNode = nodes.find { it.type == "view" }
@@ -230,7 +225,7 @@ fun ArPage(
         } finally {
             arPageViewModel.handleIntent(ArPageIntent.SetLoading(false))
             handler.initializeNodes(state, isEditMode = editMode, isQrMode = state.isQrMode)
-            if (state.nodeList.isEmpty()) {
+            if (arPageViewModel.state.value.nodeList.isEmpty()) {
                 snackbarHostState.showSnackbar("Нет точек для отображения (возможно, нет локальных данных)")
             }
         }

@@ -65,4 +65,13 @@ class NodeViewModel @Inject constructor(private val nodeDao: NodeDao) : ViewMode
             }
         }
     }
+
+    suspend fun deleteNodesForBuilding(buildingId: Long) {
+        try {
+            Log.d("NodeViewModel", "Deleting all nodes for building $buildingId")
+            nodeDao.deleteNodesForBuilding(buildingId)
+        } catch (e: Exception) {
+            Log.e("NodeViewModel", "Error deleting nodes for building $buildingId: ${e.message}")
+        }
+    }
 }

@@ -11,9 +11,9 @@ data class NodeDb(
     val nameNode: String,
     val translation: FloatArray,
     val quaternion: FloatArray,
-    val type: String, //3 types, 1)entry with ViewNode, 2)path ModelNode as node between entries 3)link ModelNode cylinder as strait line between paths
-    val title: String, //scanned number\string
-    var neighbors: String //vaR bcoz we can append or delete links(third type)
+    val type: String,
+    val title: String,
+    var neighbors: String
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
